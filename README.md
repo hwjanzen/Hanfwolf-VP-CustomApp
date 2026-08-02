@@ -230,8 +230,8 @@ Recommended setup for team testing:
 
 Notes:
 
-- `buildCommand` on Render runs `npm install && npm run setup && npm run build`.
-- `startCommand` on Render runs `npm run start`.
+- `buildCommand` on Render runs `npm install && npm run build`.
+- `startCommand` on Render runs `npm run docker-start` so Prisma migrations are applied on the mounted Render disk before the server starts.
 - For long-term production use, PostgreSQL is recommended over SQLite.
 
 ## Gotchas / Troubleshooting
