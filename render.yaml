@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: hanfwolf-vp-customapp
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm install && npm run setup && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: NODE_ENV
+        value: production
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: SHOPIFY_APP_URL
+        sync: false
+      - key: SCOPES
+        value: read_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers
+    disk:
+      name: prisma-data
+      mountPath: /opt/render/project/src/prisma
+      sizeGB: 1

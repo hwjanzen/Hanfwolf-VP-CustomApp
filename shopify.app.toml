@@ -1,0 +1,32 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "b399bbc956429808538cb488e2a53b96"
+name = "Hanfwolf-VP-CustomApp"
+application_url = "https://lucy-evaluated-grew-drove.trycloudflare.com"
+embedded = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers"
+
+[auth]
+redirect_urls = [ "https://lucy-evaluated-grew-drove.trycloudflare.com/auth/callback", "https://lucy-evaluated-grew-drove.trycloudflare.com/auth/shopify/callback", "https://lucy-evaluated-grew-drove.trycloudflare.com/api/auth/callback" ]
+
+[webhooks]
+api_version = "2026-10"
+
+	[[webhooks.subscriptions]]
+	uri = "/webhooks/app/uninstalled"
+	topics = [ "app/uninstalled" ]
+
+	[[webhooks.subscriptions]]
+	uri = "/webhooks/app/scopes_update"
+	topics = [ "app/scopes_update" ]
+
+[app_proxy]
+url = "https://lucy-evaluated-grew-drove.trycloudflare.com/apps/hanfwolf-pricing"
+subpath = "hanfwolf-pricing"
+prefix = "apps"
+
+[build]
+automatically_update_urls_on_dev = true
