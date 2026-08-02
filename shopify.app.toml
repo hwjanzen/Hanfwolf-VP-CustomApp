@@ -2,7 +2,7 @@
 
 client_id = "b399bbc956429808538cb488e2a53b96"
 name = "Hanfwolf-VP-CustomApp"
-application_url = "https://lucy-evaluated-grew-drove.trycloudflare.com"
+application_url = "https://hanfwolf-vp-customapp.onrender.com"
 embedded = true
 
 [access_scopes]
@@ -10,7 +10,7 @@ embedded = true
 scopes = "read_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers"
 
 [auth]
-redirect_urls = [ "https://lucy-evaluated-grew-drove.trycloudflare.com/auth/callback", "https://lucy-evaluated-grew-drove.trycloudflare.com/auth/shopify/callback", "https://lucy-evaluated-grew-drove.trycloudflare.com/api/auth/callback" ]
+redirect_urls = [ "https://hanfwolf-vp-customapp.onrender.com/auth/callback", "https://hanfwolf-vp-customapp.onrender.com/auth/shopify/callback", "https://hanfwolf-vp-customapp.onrender.com/api/auth/callback" ]
 
 [webhooks]
 api_version = "2026-10"
@@ -24,7 +24,7 @@ api_version = "2026-10"
 	topics = [ "app/scopes_update" ]
 
 [app_proxy]
-url = "https://lucy-evaluated-grew-drove.trycloudflare.com/apps/hanfwolf-pricing"
+url = "https://hanfwolf-vp-customapp.onrender.com/apps/hanfwolf-pricing"
 subpath = "hanfwolf-pricing"
 prefix = "apps"
 
