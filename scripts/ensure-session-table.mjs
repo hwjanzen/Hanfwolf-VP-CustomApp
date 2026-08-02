@@ -17,7 +17,9 @@ async function ensureSessionTable() {
     }
 
     console.warn("[startup] Session table missing. Running prisma db push fallback...");
-    execSync("npx prisma db push --skip-generate", { stdio: "inherit" });
+    execSync("npx prisma db push --schema ./prisma/schema.prisma --skip-generate", {
+      stdio: "inherit",
+    });
     await prisma.session.count();
     console.info("[startup] Session table created and verified.");
   }

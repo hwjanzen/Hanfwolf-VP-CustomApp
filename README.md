@@ -217,9 +217,9 @@ Recommended setup for team testing:
   - `SHOPIFY_API_SECRET`
   - `SHOPIFY_APP_URL`
   - `SCOPES`
-5. Keep the persistent disk mounted at `/opt/render/project/src/prisma`.
+5. Keep the persistent disk mounted at `/opt/render/project/src/data`.
   - This app currently uses SQLite for Shopify session storage.
-  - The mounted disk keeps `prisma/dev.sqlite` across restarts.
+  - The mounted disk keeps `data/dev.sqlite` across restarts.
 6. After the first successful deploy, copy the Render service URL.
 7. Update `shopify.app.toml` with the Render URL for:
   - `application_url`
@@ -231,7 +231,7 @@ Recommended setup for team testing:
 Notes:
 
 - `buildCommand` on Render runs `npm install && npm run build`.
-- `startCommand` on Render runs `npm run docker-start` so Prisma migrations are applied on the mounted Render disk before the server starts.
+- `startCommand` on Render can run `npm run start`; the `prestart` hook runs Prisma setup and session-table checks before server boot.
 - For long-term production use, PostgreSQL is recommended over SQLite.
 
 ## Gotchas / Troubleshooting

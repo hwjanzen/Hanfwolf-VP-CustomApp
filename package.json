@@ -12,7 +12,7 @@
     "prestart": "npm run setup && npm run ensure:session-table",
     "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run ensure:session-table && npm run start",
-    "setup": "prisma generate && prisma migrate deploy",
+    "setup": "prisma generate --schema ./prisma/schema.prisma && prisma migrate deploy --schema ./prisma/schema.prisma",
     "ensure:session-table": "node ./scripts/ensure-session-table.mjs",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",

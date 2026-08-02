@@ -11,6 +11,8 @@ services:
         value: 22.18.0
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        value: file:/opt/render/project/src/data/dev.sqlite
       - key: SHOPIFY_API_KEY
         sync: false
       - key: SHOPIFY_API_SECRET
@@ -21,5 +23,5 @@ services:
         value: read_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers
     disk:
       name: prisma-data
-      mountPath: /opt/render/project/src/prisma
+      mountPath: /opt/render/project/src/data
       sizeGB: 1
