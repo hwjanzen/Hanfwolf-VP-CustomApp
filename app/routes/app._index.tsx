@@ -77,10 +77,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         mutation ImportMetaobjectValue($metaobject: MetaobjectCreateInput!) {
           metaobjectCreate(metaobject: $metaobject) {
             metaobject { id }
-            userErrors { field message }
+            userErrors { field message code }
           }
         }`,
-        { variables: { metaobject: { type, fields: [{ key: fieldKey, value }] } } },
+        { variables: { metaobject: { type, values: { [fieldKey]: value } } } },
       );
 
       if (!result.ok || !result.data?.metaobjectCreate?.metaobject?.id) {
@@ -505,13 +505,13 @@ export default function Index() {
             <s-text-field
               label="Metaobject-Typ"
               name="metaobjectType"
-              value="en_att_durchmesser"
+              value="enattdurchmesser"
               required
             />
             <s-text-field
               label="Feld-Key"
               name="fieldKey"
-              placeholder="z. B. durchmesser"
+              value="durchmesser"
               required
             />
             <s-text-area
