@@ -80,7 +80,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             userErrors { field message code }
           }
         }`,
-        { variables: { metaobject: { type, values: { [fieldKey]: value } } } },
+        { metaobject: { type, values: { [fieldKey]: value } } },
       );
 
       if (!result.ok || !result.data?.metaobjectCreate?.metaobject?.id) {
