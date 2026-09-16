@@ -88,7 +88,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           value,
           message:
             result.ok
-              ? result.data?.metaobjectCreate?.userErrors.map((error) => error.message).join(" ")
+              ? result.data?.metaobjectCreate?.userErrors
+                  .map((error) => error.message)
+                  .join(" ") || "Shopify hat den Eintrag abgelehnt."
               : result.errors.join(" "),
         });
       }
@@ -503,7 +505,7 @@ export default function Index() {
             <s-text-field
               label="Metaobject-Typ"
               name="metaobjectType"
-              value="enAttDurchmesser"
+              value="en_att_durchmesser"
               required
             />
             <s-text-field
