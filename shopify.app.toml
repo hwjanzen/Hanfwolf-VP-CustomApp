@@ -1,55 +1,20 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-<<<<<<< HEAD
 client_id = "b399bbc956429808538cb488e2a53b96"
 name = "Hanfwolf-VP-CustomApp"
 application_url = "https://hanfwolf-vp-customapp.onrender.com"
-=======
-client_id = "a7ce874f2dbea7423886865098e26f9f"
-name = "Hello-world-app"
-application_url = "https://example.com"
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 embedded = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-<<<<<<< HEAD
 scopes = "read_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers"
 
 [auth]
 redirect_urls = [ "https://hanfwolf-vp-customapp.onrender.com/auth/callback", "https://hanfwolf-vp-customapp.onrender.com/auth/shopify/callback", "https://hanfwolf-vp-customapp.onrender.com/api/auth/callback" ]
-=======
-scopes = "write_products,write_metaobjects,write_metaobject_definitions"
-
-[product.metafields.app.demo_info]
-type = "single_line_text_field"
-name = "Demo Source Info"
-description = "Tracks products created by the Shopify app template for development"
-
-  [product.metafields.app.demo_info.access]
-  admin = "merchant_read_write"
-
-[metaobjects.app.example]
-name = "Example"
-description = "An example metaobject definition created by this template"
-
-  [metaobjects.app.example.access]
-  admin = "merchant_read_write"
-
-[metaobjects.app.example.fields.title]
-name = "Title"
-type = "single_line_text_field"
-required = true
-
-[metaobjects.app.example.fields.description]
-name = "Description"
-type = "multi_line_text_field"
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 
 [webhooks]
 api_version = "2026-10"
 
-<<<<<<< HEAD
 	[[webhooks.subscriptions]]
 	uri = "/webhooks/app/uninstalled"
 	topics = [ "app/uninstalled" ]
@@ -64,19 +29,4 @@ subpath = "hanfwolf-pricing"
 prefix = "apps"
 
 [build]
-=======
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-[auth]
-redirect_urls = [ "https://example.com/api/auth" ]
-
-[build]
-include_config_on_deploy = true
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 automatically_update_urls_on_dev = true

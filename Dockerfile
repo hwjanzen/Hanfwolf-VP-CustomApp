@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 FROM node:22-alpine
-=======
-FROM node:20-alpine
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 RUN apk add --no-cache openssl
 
 EXPOSE 3000

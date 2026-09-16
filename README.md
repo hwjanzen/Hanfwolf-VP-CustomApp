@@ -32,7 +32,6 @@ Press P to open the URL to your app. Once you click install, you can start devel
 
 Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
 
-<<<<<<< HEAD
 ## Hanfwolf Workflow (Custom Variant Prices)
 
 ### Wann welche Befehle ausfuehren
@@ -108,8 +107,6 @@ Hinweise:
 - Auf `products/gift-card` wird eine Add-to-Cart-Preisbox gerendert.
 - Auf `collections/all` werden fuer die ersten gefundenen Produktkarten Custom-Preise eingeblendet.
 
-=======
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 ### Authenticating and querying data
 
 To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:
@@ -206,7 +203,6 @@ When you're ready to set up your app in production, you can follow [our deployme
 
 When you reach the step for [setting up environment variables](https://shopify.dev/docs/apps/deployment/web#set-env-vars), you also need to set the variable `NODE_ENV=production`.
 
-<<<<<<< HEAD
 ### Render Setup For This App
 
 This repository includes a `render.yaml` blueprint for quick deployment on Render.
@@ -238,8 +234,6 @@ Notes:
 - `startCommand` on Render can run `npm run start`; the `prestart` hook runs Prisma setup and session-table checks before server boot.
 - For long-term production use, PostgreSQL is recommended over SQLite.
 
-=======
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 ## Gotchas / Troubleshooting
 
 ### Database tables don't exist

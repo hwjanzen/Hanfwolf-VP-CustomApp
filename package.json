@@ -9,40 +9,26 @@
     "deploy": "shopify app deploy",
     "config:use": "shopify app config use",
     "env": "shopify app env",
-<<<<<<< HEAD
     "prestart": "npm run setup && npm run ensure:session-table",
     "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run ensure:session-table && npm run start",
     "setup": "prisma generate --schema ./prisma/schema.prisma && prisma migrate deploy --schema ./prisma/schema.prisma",
     "ensure:session-table": "node ./scripts/ensure-session-table.mjs",
-=======
-    "start": "react-router-serve ./build/server/index.js",
-    "docker-start": "npm run setup && npm run start",
-    "setup": "prisma generate && prisma migrate deploy",
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
-<<<<<<< HEAD
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
-=======
-    "typecheck": "react-router typegen && tsc --noEmit"
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
   },
   "type": "module",
   "engines": {
     "node": ">=20.19 <22 || >=22.12"
   },
   "dependencies": {
-<<<<<<< HEAD
     "@prisma/client": "^6.19.3",
-=======
-    "@prisma/client": "^6.16.3",
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
     "@react-router/dev": "^7.12.0",
     "@react-router/fs-routes": "^7.12.0",
     "@react-router/node": "^7.12.0",
@@ -75,12 +61,8 @@
     "graphql-config": "^5.1.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
-<<<<<<< HEAD
     "vite": "^6.3.6",
     "vitest": "^4.1.10"
-=======
-    "vite": "^6.3.6"
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
   },
   "workspaces": [
     "extensions/*"
@@ -92,8 +74,4 @@
     "p-map": "^4.0.0"
   },
   "author": "janzen"
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
