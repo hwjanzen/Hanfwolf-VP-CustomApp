@@ -6,7 +6,10 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+<<<<<<< HEAD
 import { ensurePricingBootstrap } from "./services/pricing-bootstrap.server";
+=======
+>>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -20,6 +23,7 @@ const shopify = shopifyApp({
   future: {
     expiringOfflineAccessTokens: true,
   },
+<<<<<<< HEAD
   hooks: {
     afterAuth: async ({ admin, session }) => {
       try {
@@ -36,6 +40,8 @@ const shopify = shopifyApp({
       }
     },
   },
+=======
+>>>>>>> 985a519 (feat: initialize hello-world-app with Shopify integration and Prisma setup)
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
