@@ -107,6 +107,54 @@ Hinweise:
 - Auf `products/gift-card` wird eine Add-to-Cart-Preisbox gerendert.
 - Auf `collections/all` werden fuer die ersten gefundenen Produktkarten Custom-Preise eingeblendet.
 
+### Konfektionierte Seile per Draft Order
+
+Der signierte App-Proxy-Endpunkt `POST /apps/hanfwolf-pricing/draft-order`
+erstellt fuer Produkte vom Typ `Spezialseile` einen Draft Order. Der
+Variantenpreis wird als Meterpreis interpretiert. Der Preis je konfektioniertem
+Seil wird auf volle Cent aufgerundet. Das an der Variante gepflegte Gewicht wird
+als Gewicht pro Meter interpretiert und mit der Zuschnittlaenge multipliziert.
+Die Draft-Order-Position wird als versandfaehiges Custom Line Item angelegt,
+damit Shopify das berechnete Gewicht fuer die Versandkosten verwendet.
+
+Beispielanfrage:
+
+```json
+{
+  "items": [
+    {
+      "variantId": "gid://shopify/ProductVariant/123456789",
+      "quantity": 3,
+      "lengthMeters": "12",
+      "presentation": "Ring"
+    },
+    {
+      "variantId": "gid://shopify/ProductVariant/123456789",
+      "quantity": 1,
+      "lengthMeters": "1,3",
+      "presentation": "Haspel"
+    }
+  ]
+}
+```
+
+Voraussetzungen:
+
+- App-Scope `write_draft_orders` ist autorisiert.
+- Das Produkt hat den Produkttyp `Spezialseile`.
+- An jeder verwendeten Variante sind Meterpreis und Gewicht pro Meter gepflegt.
+- Fuer Aufmachung `Haspel` existiert am Produkt das Metafeld
+  `custom.haspel_surcharge` vom Typ `number_decimal`. Der Wert ist der feste
+  Aufpreis pro konfektioniertem Seil.
+- Laengen liegen zwischen 0,5 und 500 m und haben maximal zwei Nachkommastellen.
+
+Die Antwort enthaelt `checkoutUrl`; dorthin wird der Kunde nach erfolgreicher
+Erstellung weitergeleitet. Preise und Gewichte aus dem Browser werden nicht
+akzeptiert. Da Shopify individuelle Gewichte bei Variantenzeilen ignoriert,
+werden Produkt- und Varianten-ID als interne Attribute am Custom Line Item
+gespeichert; eine automatische Bestandsreduzierung der Originalvariante findet
+dabei nicht statt.
+
 ### Authenticating and querying data
 
 To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:
