@@ -124,6 +124,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           `Fuer ${variant.product.title} fehlt das Varianten-Gewicht pro Meter.`,
         );
       }
+      const unitWeight = calculateRopeUnitWeight(
+        weightPerMeter.value,
+        cut.lengthMeters,
+      );
+      const totalWeight = Number((unitWeight * cut.quantity).toFixed(6));
 
       return {
         title: variant.displayName,
@@ -133,7 +138,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           currencyCode,
         },
         weight: {
-          value: calculateRopeUnitWeight(weightPerMeter.value, cut.lengthMeters),
+          value: unitWeight,
           unit: weightPerMeter.unit,
         },
         requiresShipping: true,
@@ -143,6 +148,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { key: "Laenge", value: `${cut.lengthMeters} m` },
           { key: "Aufmachung", value: cut.presentation },
           { key: "Meterpreis", value: `${variant.price} ${currencyCode}/m` },
+          {
+            key: "Gewicht je Seil",
+            value: `${unitWeight} ${weightPerMeter.unit}`,
+          },
+          {
+            key: "Gesamtgewicht",
+            value: `${totalWeight} ${weightPerMeter.unit}`,
+          },
           { key: "_product_id", value: variant.product.id },
           { key: "_variant_id", value: variant.id },
         ],
