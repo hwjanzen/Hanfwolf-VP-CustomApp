@@ -131,6 +131,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         cut.lengthMeters,
       );
       const totalWeight = Number((unitWeight * cut.quantity).toFixed(6));
+      const unitWeightKilograms = Number(
+        convertWeightToKilograms(unitWeight, weightPerMeter.unit).toFixed(6),
+      );
+      const totalWeightKilograms = Number(
+        convertWeightToKilograms(totalWeight, weightPerMeter.unit).toFixed(6),
+      );
 
       return {
         title: variant.displayName,
@@ -152,11 +158,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { key: "Meterpreis", value: `${variant.price} ${currencyCode}/m` },
           {
             key: "Gewicht je Seil",
-            value: `${unitWeight} ${weightPerMeter.unit}`,
+            value: `${unitWeightKilograms} kg`,
           },
           {
             key: "Gesamtgewicht",
-            value: `${totalWeight} ${weightPerMeter.unit}`,
+            value: `${totalWeightKilograms} kg`,
           },
           { key: "_product_id", value: variant.product.id },
           { key: "_variant_id", value: variant.id },
