@@ -2,8 +2,10 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { normalizeCustomerId } from "../services/price-resolver.server";
 import {
+  calculateRopeShippingPrice,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
+  convertWeightToKilograms,
   normalizeRopeCuts,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
@@ -168,6 +170,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  const totalWeight = Number(
+    lineItems
+      .reduce(
+        (sum, lineItem) =>
+          sum +
+          convertWeightToKilograms(
+            lineItem.weight.value * lineItem.quantity,
+            lineItem.weight.unit,
+          ),
+        0,
+      )
+      .toFixed(6),
+  );
+  const shippingPrice = calculateRopeShippingPrice(totalWeight);
+
   const url = new URL(request.url);
   const customerId = normalizeCustomerId(url.searchParams.get("logged_in_customer_id") || "");
   const draftResult = await adminGraphql<{
@@ -204,6 +221,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       input: {
         ...(customerId ? { customerId } : {}),
         lineItems,
+        shippingLine: {
+          title: "Standard",
+          price: shippingPrice,
+        },
+        customAttributes: [
+          { key: "Gesamtgewicht", value: `${totalWeight} kg` },
+          { key: "Versandstaffel", value: `${shippingPrice} ${currencyCode}` },
+        ],
         note: "Konfektionierte Seile aus dem Onlineshop",
         tags: ["Konfektionierte Seile"],
       },

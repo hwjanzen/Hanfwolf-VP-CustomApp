@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateRopeShippingPrice,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
+  convertWeightToKilograms,
   normalizeRopeCuts,
 } from "./rope-draft-order.server";
 
@@ -23,6 +25,22 @@ describe("rope draft order pricing", () => {
     expect(() => calculateRopeUnitWeight(0, "12")).toThrow(
       "Gewicht pro Meter",
     );
+  });
+
+  it("selects shipping by total order weight", () => {
+    expect(calculateRopeShippingPrice(10)).toBe("15.00");
+    expect(calculateRopeShippingPrice(10.0001)).toBe("30.00");
+    expect(calculateRopeShippingPrice(50)).toBe("30.00");
+    expect(calculateRopeShippingPrice(50.0001)).toBe("50.00");
+    expect(calculateRopeShippingPrice(200)).toBe("50.00");
+    expect(calculateRopeShippingPrice(200.0001)).toBe("150.00");
+  });
+
+  it("normalizes Shopify weight units to kilograms", () => {
+    expect(convertWeightToKilograms(350, "GRAMS")).toBe(0.35);
+    expect(convertWeightToKilograms(0.35, "KILOGRAMS")).toBe(0.35);
+    expect(convertWeightToKilograms(1, "POUNDS")).toBeCloseTo(0.45359237);
+    expect(convertWeightToKilograms(1, "OUNCES")).toBeCloseTo(0.028349523125);
   });
 
   it("normalizes valid cuts", () => {

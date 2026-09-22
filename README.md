@@ -155,6 +155,14 @@ werden Produkt- und Varianten-ID als interne Attribute am Custom Line Item
 gespeichert; eine automatische Bestandsreduzierung der Originalvariante findet
 dabei nicht statt.
 
+Der Versandpreis wird serverseitig aus dem Gesamtgewicht aller Seilpositionen
+berechnet und als eine Versandzeile `Standard` am Draft Order gesetzt:
+
+- bis 10 kg: 15 EUR
+- ueber 10 bis 50 kg: 30 EUR
+- ueber 50 bis 200 kg: 50 EUR
+- ueber 200 kg: 150 EUR
+
 ### Authenticating and querying data
 
 To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:

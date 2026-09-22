@@ -85,3 +85,33 @@ export function calculateRopeUnitWeight(
   const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Laenge");
   return Number((weightPerMeter * (lengthHundredths / 100)).toFixed(6));
 }
+
+export function calculateRopeShippingPrice(totalWeightKilograms: number) {
+  if (!Number.isFinite(totalWeightKilograms) || totalWeightKilograms <= 0) {
+    throw new Error("Das Gesamtgewicht muss groesser als 0 kg sein.");
+  }
+
+  if (totalWeightKilograms <= 10) return "15.00";
+  if (totalWeightKilograms <= 50) return "30.00";
+  if (totalWeightKilograms <= 200) return "50.00";
+  return "150.00";
+}
+
+export function convertWeightToKilograms(value: number, unit: string) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Das Gewicht ist ungueltig.");
+  }
+
+  switch (unit) {
+    case "KILOGRAMS":
+      return value;
+    case "GRAMS":
+      return value / 1000;
+    case "POUNDS":
+      return value * 0.45359237;
+    case "OUNCES":
+      return value * 0.028349523125;
+    default:
+      throw new Error(`Nicht unterstuetzte Gewichtseinheit: ${unit}.`);
+  }
+}
