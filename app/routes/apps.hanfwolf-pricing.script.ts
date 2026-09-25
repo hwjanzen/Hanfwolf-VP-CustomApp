@@ -46,6 +46,12 @@ const scriptBody = String.raw`(function () {
     return url.toString();
   }
 
+  function buildProxyActionUrl(action) {
+    var url = new URL(proxyPath, window.location.origin);
+    url.pathname = url.pathname.replace(/\/$/, "") + "/" + encodeURIComponent(action);
+    return url.toString();
+  }
+
   function formatMoney(numberValue) {
     if (typeof numberValue !== "number" || !Number.isFinite(numberValue)) {
       return "n/a";
@@ -130,6 +136,150 @@ const scriptBody = String.raw`(function () {
         error: "Invalid JSON response from pricing endpoint.",
       };
     }
+  }
+
+  async function requestJson(url, options) {
+    var response = await fetch(url, options);
+    var payload;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      throw new Error("Ungueltige Antwort vom Hanfwolf-Preisservice.");
+    }
+
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || "Der Hanfwolf-Preisservice hat die Anfrage abgelehnt.");
+    }
+
+    return payload;
+  }
+
+  async function addRopeCutToCart(item) {
+    var cartVariant = await requestJson(buildProxyActionUrl("cart-variant"), {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ item: item }),
+    });
+
+    var cartResponse = await fetch(getStoreRoot() + "cart/add.js", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: cartVariant.cartVariantNumericId,
+        quantity: cartVariant.quantity,
+        properties: cartVariant.properties,
+      }),
+    });
+    if (!cartResponse.ok) {
+      throw new Error("Die Zuschnitt-Variante konnte nicht in den Warenkorb gelegt werden.");
+    }
+
+    return cartResponse.json();
+  }
+
+  async function finalizeCart() {
+    var cart = await requestJson(getStoreRoot() + "cart.js", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    var draftOrder = await requestJson(
+      buildProxyActionUrl("cart-draft-order"),
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          items: (cart.items || []).map(function (item) {
+            return {
+              variantId: "gid://shopify/ProductVariant/" + item.variant_id,
+              quantity: item.quantity,
+              properties: item.properties || {},
+            };
+          }),
+        }),
+      },
+    );
+
+    window.location.assign(draftOrder.checkoutUrl);
+  }
+
+  var isCheckoutInProgress = false;
+
+  function isCartCheckoutSubmit(form, submitter) {
+    if (!form || !submitter || !form.action) return false;
+
+    var formUrl = new URL(form.action, window.location.origin);
+    var isCartForm = /\/cart\/?$/.test(formUrl.pathname);
+    var isCheckoutButton =
+      submitter.name === "checkout" ||
+      submitter.getAttribute("data-hanfwolf-cart-checkout") === "true";
+
+    return isCartForm && isCheckoutButton;
+  }
+
+  async function startCartCheckout(control) {
+    if (isCheckoutInProgress) return;
+
+    isCheckoutInProgress = true;
+    if (control) {
+      control.setAttribute("aria-busy", "true");
+      if ("disabled" in control) control.disabled = true;
+    }
+
+    try {
+      await finalizeCart();
+    } catch (error) {
+      console.error("Failed to finalize Hanfwolf cart", error);
+      isCheckoutInProgress = false;
+      if (control) {
+        control.removeAttribute("aria-busy");
+        if ("disabled" in control) control.disabled = false;
+      }
+      window.alert(
+        error && error.message
+          ? error.message
+          : "Der Warenkorb konnte nicht zur Kasse weitergeleitet werden.",
+      );
+    }
+  }
+
+  function bindCartCheckout() {
+    document.addEventListener(
+      "submit",
+      function (event) {
+        if (!isCartCheckoutSubmit(event.target, event.submitter)) return;
+
+        event.preventDefault();
+        startCartCheckout(event.submitter);
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "click",
+      function (event) {
+        var link = event.target && event.target.closest && event.target.closest("a[href]");
+        if (!link) return;
+
+        var linkUrl = new URL(link.href, window.location.origin);
+        if (!/\/checkout\/?$/.test(linkUrl.pathname)) return;
+
+        event.preventDefault();
+        startCartCheckout(link);
+      },
+      true,
+    );
   }
 
   function getBadgeKey(target, contextKey) {
@@ -490,6 +640,12 @@ const scriptBody = String.raw`(function () {
   if (/\/collections\/all/i.test(path)) {
     handleCollectionAllPage();
   }
+
+  bindCartCheckout();
+
+  window.HanfwolfPricing = window.HanfwolfPricing || {};
+  window.HanfwolfPricing.addRopeCutToCart = addRopeCutToCart;
+  window.HanfwolfPricing.finalizeCart = finalizeCart;
 })();`;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {

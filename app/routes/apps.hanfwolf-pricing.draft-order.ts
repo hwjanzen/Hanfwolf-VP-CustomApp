@@ -29,7 +29,7 @@ type VariantNode = {
   };
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+async function createRopeDraftOrder(request: Request) {
   const { admin, session } = await authenticate.public.appProxy(request);
 
   if (!admin || !session) {
@@ -269,4 +269,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  try {
+    return await createRopeDraftOrder(request);
+  } catch (error) {
+    console.error("Unexpected rope draft order error", error);
+    return Response.json(
+      {
+        ok: false,
+        error: "Unerwarteter Serverfehler beim Erstellen der Draft Order.",
+        details: [error instanceof Error ? error.message : String(error)],
+      },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 };

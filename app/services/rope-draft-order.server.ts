@@ -74,6 +74,55 @@ export function calculateRopeUnitPrice(
   return (unitPriceCents / 100).toFixed(2);
 }
 
+export function createRopeCartConfigurationKey(
+  originalVariantId: string,
+  lengthMeters: string,
+  presentation: RopeCut["presentation"],
+  unitPrice: string,
+) {
+  const normalizedCut = normalizeRopeCuts([
+    {
+      variantId: originalVariantId,
+      quantity: 1,
+      lengthMeters,
+      presentation,
+    },
+  ])[0];
+  const priceCents = parseScaledDecimal(unitPrice, 2, "Preis");
+
+  return [
+    "v1",
+    normalizedCut.variantId,
+    normalizedCut.lengthMeters,
+    normalizedCut.presentation,
+    priceCents,
+  ].join("|");
+}
+
+export function parseRopeCartConfigurationKey(value: string) {
+  const [version, originalVariantId, lengthMeters, presentation, priceCents] = value.split("|");
+  if (version !== "v1" || !originalVariantId || !lengthMeters || !presentation || !priceCents) {
+    throw new Error("Die Zuschnitt-Variante hat keinen gueltigen Konfigurationsschluessel.");
+  }
+
+  const normalizedCut = normalizeRopeCuts([
+    {
+      variantId: originalVariantId,
+      quantity: 1,
+      lengthMeters,
+      presentation,
+    },
+ ])[0];
+  if (!/^\d+$/.test(priceCents)) {
+    throw new Error("Die Zuschnitt-Variante hat einen ungueltigen Preis.");
+  }
+
+  return {
+    ...normalizedCut,
+    unitPrice: (Number(priceCents) / 100).toFixed(2),
+  };
+}
+
 export function calculateRopeUnitWeight(
   weightPerMeter: number,
   lengthMeters: string,

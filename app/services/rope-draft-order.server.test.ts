@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateRopeShippingPrice,
+  createRopeCartConfigurationKey,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
   normalizeRopeCuts,
+  parseRopeCartConfigurationKey,
 } from "./rope-draft-order.server";
 
 describe("rope draft order pricing", () => {
@@ -13,6 +15,43 @@ describe("rope draft order pricing", () => {
     expect(calculateRopeUnitPrice("2.90", "1,3")).toBe("3.77");
     expect(calculateRopeUnitPrice("2.90", "7.75")).toBe("22.48");
     expect(calculateRopeUnitPrice("2.90", "7.75", "4.50")).toBe("26.98");
+  });
+
+  it("creates the same cart configuration key for equivalent decimal input", () => {
+    expect(
+      createRopeCartConfigurationKey(
+        "gid://shopify/ProductVariant/123",
+        "1,30",
+        "Haspel",
+        "8.27",
+      ),
+    ).toBe(
+      createRopeCartConfigurationKey(
+        "gid://shopify/ProductVariant/123",
+        "1.3",
+        "Haspel",
+        "8.27",
+      ),
+    );
+  });
+
+  it("parses a server-generated cart configuration key", () => {
+    expect(
+      parseRopeCartConfigurationKey(
+        createRopeCartConfigurationKey(
+          "gid://shopify/ProductVariant/123",
+          "1.3",
+          "Haspel",
+          "8.27",
+        ),
+      ),
+    ).toEqual({
+      variantId: "gid://shopify/ProductVariant/123",
+      quantity: 1,
+      lengthMeters: "1.3",
+      presentation: "Haspel",
+      unitPrice: "8.27",
+    });
   });
 
   it("calculates the weight of each configured rope from weight per meter", () => {

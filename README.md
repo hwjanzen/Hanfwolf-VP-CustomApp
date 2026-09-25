@@ -163,6 +163,45 @@ berechnet und als eine Versandzeile `Standard` am Draft Order gesetzt:
 - ueber 50 bis 200 kg: 50 EUR
 - ueber 200 kg: 150 EUR
 
+### Zuschnitt-Varianten im Warenkorb
+
+`POST /apps/hanfwolf-pricing/cart-variant` nimmt einen einzelnen Seil-Zuschnitt
+entgegen, berechnet dessen Preis serverseitig und liefert eine wiederverwendbare
+Shopify-Variante fuer den Warenkorb. Die Theme-Integration fuegt die Antwort mit
+`/cart/add.js` hinzu. Die Antwort enthaelt `cartVariantNumericId` und die unter
+`properties` gelieferten Line-Properties; insbesondere darf niemals ein Preis
+aus dem Browser uebernommen werden.
+
+Die temporäre Variante wird ueber Originalvariante, Laenge, Aufmachung und
+berechneten Preis wiederverwendet. Fuer die Bereitstellung ist der Scope
+`write_products` erforderlich. Nach einer Scope-Aenderung muss die App erneut
+autorisiert werden.
+
+`POST /apps/hanfwolf-pricing/cart-draft-order` finalisiert den kompletten
+Warenkorb in einer einzigen Draft Order. Der Request nimmt die Shopify-Cart-Lines
+mit `variantId`, `quantity` und optionalen `properties` entgegen. Fuer
+Zuschnitt-Varianten liest der Endpunkt ausschliesslich das serverseitige
+Metafeld `hanfwolf.rope_configuration`; die Line-Properties aus dem Browser
+sind keine Preisquelle. Gewoehnliche Varianten werden als normale
+Draft-Order-Positionen uebernommen.
+
+Das Theme-Skript stellt die folgenden Browser-APIs bereit:
+
+```js
+await window.HanfwolfPricing.addRopeCutToCart({
+  variantId: "gid://shopify/ProductVariant/123456789",
+  quantity: 1,
+  lengthMeters: "12",
+  presentation: "Ring",
+});
+
+await window.HanfwolfPricing.finalizeCart();
+```
+
+Der Konfigurator ruft `addRopeCutToCart` anstelle seiner bisherigen
+Draft-Order-Anfrage auf. Der B2B-Warenkorb-Button muss `finalizeCart` aufrufen
+und darf danach nicht den normalen Shopify-Checkout oeffnen.
+
 ### Authenticating and querying data
 
 To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:
