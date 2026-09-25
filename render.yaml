@@ -20,7 +20,7 @@ services:
       - key: SHOPIFY_APP_URL
         sync: false
       - key: SCOPES
-        value: read_products,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers
+        value: read_products,write_products,read_inventory,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions,read_companies,read_customers,write_customers,write_draft_orders
     disk:
       name: prisma-data
       mountPath: /opt/render/project/src/data
