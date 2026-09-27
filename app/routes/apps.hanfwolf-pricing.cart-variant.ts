@@ -346,9 +346,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const sourceWeight = source.inventoryItem.measurement.weight;
-    if (!sourceWeight) {
+    if (!sourceWeight || !Number.isFinite(sourceWeight.value) || sourceWeight.value <= 0) {
+      const measuredWeight = sourceWeight
+        ? `${sourceWeight.value} ${sourceWeight.unit}`
+        : "nicht gepflegt";
       return Response.json(
-        { ok: false, error: `Fuer ${source.product.title} fehlt das Varianten-Gewicht pro Meter.` },
+        {
+          ok: false,
+          error: `Fuer ${source.product.title} (Originalvariante ${source.id}) muss ein positives Gewicht pro Meter gepflegt sein. Shopify liefert aktuell: ${measuredWeight}.`,
+        },
         { status: 400 },
       );
     }
