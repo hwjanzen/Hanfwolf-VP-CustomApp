@@ -40,6 +40,7 @@ type ExistingCartVariant = {
   id: string;
   sku: string | null;
   price: string;
+  inventoryPolicy: "CONTINUE" | "DENY";
   metafield: { value: string } | null;
   inventoryItem: {
     id: string;
@@ -73,6 +74,7 @@ async function findRopeCartVariant(
           id
           sku
           price
+          inventoryPolicy
           metafield(namespace: "hanfwolf", key: "rope_configuration") {
             value
           }
@@ -112,12 +114,18 @@ async function ensureRopeCartVariantInventorySettings(
   const weightMatches =
     currentWeight?.unit === weight.unit &&
     Math.abs(currentWeight.value - weight.value) < 0.000001;
-  if (!variant.inventoryItem.tracked && variant.inventoryItem.requiresShipping && weightMatches) return;
+  if (
+    variant.inventoryPolicy === "CONTINUE" &&
+    !variant.inventoryItem.tracked &&
+    variant.inventoryItem.requiresShipping &&
+    weightMatches
+  ) return;
 
   const result = await adminGraphql<{
     productVariantsBulkUpdate: {
       productVariants: Array<{
         id: string;
+        inventoryPolicy: "CONTINUE" | "DENY";
         inventoryItem: {
           tracked: boolean;
           requiresShipping: boolean;
@@ -133,6 +141,7 @@ async function ensureRopeCartVariantInventorySettings(
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
         productVariants {
           id
+          inventoryPolicy
           inventoryItem {
             tracked
             requiresShipping
@@ -155,6 +164,7 @@ async function ensureRopeCartVariantInventorySettings(
       variants: [
         {
           id: variant.id,
+          inventoryPolicy: "CONTINUE",
           inventoryItem: {
             tracked: false,
             requiresShipping: true,
@@ -176,11 +186,12 @@ async function ensureRopeCartVariantInventorySettings(
   const updatedInventoryItem = payload.productVariants[0]?.inventoryItem;
   if (
     updatedInventoryItem?.tracked !== false ||
+    payload.productVariants[0]?.inventoryPolicy !== "CONTINUE" ||
     !updatedInventoryItem.requiresShipping ||
     updatedInventoryItem.measurement?.weight?.unit !== weight.unit ||
     Math.abs((updatedInventoryItem.measurement?.weight?.value ?? 0) - weight.value) >= 0.000001
   ) {
-    throw new Error("Versandgewicht oder Versandpflicht der Zuschnitt-Variante wurde von Shopify nicht uebernommen.");
+    throw new Error("Verkaufbarkeit, Versandpflicht oder Versandgewicht der Zuschnitt-Variante wurde von Shopify nicht korrekt uebernommen.");
   }
 }
 
@@ -463,6 +474,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 id: string;
                 sku: string | null;
                 price: string;
+                inventoryPolicy: "CONTINUE" | "DENY";
                 inventoryItem: {
                   id: string;
                   tracked: boolean;
@@ -485,6 +497,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   id
                   sku
                   price
+                  inventoryPolicy
                   inventoryItem {
                     id
                     tracked
@@ -508,6 +521,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               variants: [
                 {
                   price: unitPrice,
+                  inventoryPolicy: "CONTINUE",
                   inventoryItem: {
                     sku,
                     tracked: false,
