@@ -340,12 +340,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           );
         }
 
-        const source = sourceProduct.variants.nodes.find(
-          (variant) => !variant.ropeConfiguration?.value,
-        );
+        const source =
+          sourceProduct.variants.nodes.find(
+            (variant) =>
+              !variant.ropeConfiguration?.value &&
+              !variant.sku?.startsWith("HW-RC-"),
+          ) ||
+          sourceProduct.variants.nodes.find(
+            (variant) => !variant.sku?.startsWith("HW-RC-"),
+          );
         if (!source) {
           return Response.json(
-            { ok: false, error: `Fuer ${sourceProduct.title} wurde keine unveraenderte Stammdaten-Variante gefunden.` },
+            { ok: false, error: `Fuer ${sourceProduct.title} wurde keine Stammdaten-Variante ohne die App-SKU HW-RC- gefunden.` },
             { status: 400 },
           );
         }
