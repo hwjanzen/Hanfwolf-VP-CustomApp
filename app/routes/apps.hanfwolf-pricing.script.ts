@@ -180,24 +180,61 @@ const scriptBody = String.raw`(function () {
       body: JSON.stringify({ item: item }),
     });
 
-    var cartResponse = await fetch(getStoreRoot() + "cart/add.js", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        id: cartVariant.cartVariantNumericId,
-        quantity: cartVariant.quantity,
-        properties: cartVariant.properties,
-      }),
-    });
-    if (!cartResponse.ok) {
-      throw new Error("Die Zuschnitt-Variante konnte nicht in den Warenkorb gelegt werden.");
+    var addPayload = {
+      id: cartVariant.cartVariantNumericId,
+      quantity: cartVariant.quantity,
+      properties: cartVariant.properties,
+    };
+    var retryDelays = [250, 700];
+    var lastError = null;
+
+    for (var attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+      var cartResponse = await fetch(getStoreRoot() + "cart/add.js", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(addPayload),
+      });
+      var responseText = await cartResponse.text();
+      var cartPayload = null;
+
+      try {
+        cartPayload = responseText ? JSON.parse(responseText) : null;
+      } catch (error) {
+        cartPayload = null;
+      }
+
+      if (cartResponse.ok) {
+        return cartPayload;
+      }
+
+      var description =
+        (cartPayload && (cartPayload.description || cartPayload.message)) ||
+        responseText.trim().slice(0, 180) ||
+        "unbekannter Shopify-Fehler";
+      lastError = new Error(
+        "Shopify konnte den Zuschnitt nicht hinzufuegen (HTTP " +
+          cartResponse.status +
+          "): " +
+          description,
+      );
+
+      var mayBeTemporarilyUnavailable =
+        cartResponse.status === 422 &&
+        /unavailable|not available|sold out|inventory/i.test(description);
+      if (!mayBeTemporarilyUnavailable || attempt === retryDelays.length) {
+        throw lastError;
+      }
+
+      await new Promise(function (resolve) {
+        window.setTimeout(resolve, retryDelays[attempt]);
+      });
     }
 
-    return cartResponse.json();
+    throw lastError || new Error("Der Zuschnitt konnte nicht in den Warenkorb gelegt werden.");
   }
 
   async function finalizeCart() {
