@@ -269,6 +269,60 @@ async function publishRopeCartVariant(admin: unknown, variantId: string) {
   if (userErrors.length > 0) {
     throw new Error(`Zuschnitt-Variante konnte nicht veröffentlicht werden: ${userErrors.map((error) => error.message).join("; ")}`);
   }
+
+  return publication.id;
+}
+
+async function assertRopeCartVariantAvailable(
+  admin: unknown,
+  variantId: string,
+  publicationId: string,
+) {
+  const result = await adminGraphql<{
+    productVariant: {
+      id: string;
+      availableForSale: boolean;
+      inventoryPolicy: "CONTINUE" | "DENY";
+      inventoryItem: { tracked: boolean };
+      publishedOnPublication: boolean;
+      product: { id: string; status: string; publishedAt: string | null };
+    } | null;
+  }>(
+    admin,
+    `#graphql
+    query RopeCartVariantAvailability($variantId: ID!, $publicationId: ID!) {
+      productVariant(id: $variantId) {
+        id
+        availableForSale
+        inventoryPolicy
+        inventoryItem {
+          tracked
+        }
+        publishedOnPublication(publicationId: $publicationId)
+        product {
+          id
+          status
+          publishedAt
+        }
+      }
+    }`,
+    { variantId, publicationId },
+  );
+
+  if (!result.ok) {
+    throw new Error(`Verfuegbarkeit der Zuschnitt-Variante konnte nicht gelesen werden: ${result.errors.join(" | ")}`);
+  }
+
+  const variant = result.data.productVariant;
+  if (!variant) {
+    throw new Error(`Shopify findet die Zuschnitt-Variante ${variantId} nach dem Anlegen nicht.`);
+  }
+
+  if (!variant.availableForSale) {
+    throw new Error(
+      `Shopify meldet die Zuschnitt-Variante als nicht verfuegbar (inventoryPolicy=${variant.inventoryPolicy}, tracked=${variant.inventoryItem.tracked}, publishedOnOnlineStore=${variant.publishedOnPublication}, productStatus=${variant.product.status}, publishedAt=${variant.product.publishedAt || "null"}).`,
+    );
+  }
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -584,7 +638,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           value: configuredWeight,
           unit: sourceWeight.unit,
         });
-        await publishRopeCartVariant(admin, cartVariant.id);
+        const onlineStorePublicationId = await publishRopeCartVariant(admin, cartVariant.id);
+        await assertRopeCartVariantAvailable(admin, cartVariant.id, onlineStorePublicationId);
 
         return Response.json(
           {
