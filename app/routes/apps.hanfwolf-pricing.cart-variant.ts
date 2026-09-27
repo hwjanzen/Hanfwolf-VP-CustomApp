@@ -3,6 +3,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import {
   calculateRopeUnitPrice,
+  calculateRopeUnitWeight,
   createRopeCartConfigurationKey,
   isRopeProductType,
   normalizeRopeCuts,
@@ -15,6 +16,11 @@ type SourceVariant = {
   sku: string | null;
   taxable: boolean;
   selectedOptions: Array<{ name: string; value: string }>;
+  inventoryItem: {
+    measurement: {
+      weight: { value: number; unit: string } | null;
+    };
+  };
   product: {
     id: string;
     title: string;
@@ -29,7 +35,12 @@ type ExistingCartVariant = {
   sku: string | null;
   price: string;
   metafield: { value: string } | null;
-  inventoryItem: { id: string; tracked: boolean };
+  inventoryItem: {
+    id: string;
+    tracked: boolean;
+    requiresShipping: boolean;
+    measurement: { weight: { value: number; unit: string } | null } | null;
+  };
 };
 
 function createConfigurationSku(configurationKey: string) {
@@ -62,6 +73,13 @@ async function findRopeCartVariant(
           inventoryItem {
             id
             tracked
+            requiresShipping
+            measurement {
+              weight {
+                value
+                unit
+              }
+            }
           }
         }
       }
@@ -78,30 +96,46 @@ async function findRopeCartVariant(
   );
 }
 
-async function ensureRopeCartVariantUntracked(
+async function ensureRopeCartVariantInventorySettings(
   admin: unknown,
   productId: string,
   variant: ExistingCartVariant,
+  weight: { value: number; unit: string },
 ) {
-  if (!variant.inventoryItem.tracked) return;
+  const currentWeight = variant.inventoryItem.measurement?.weight;
+  const weightMatches =
+    currentWeight?.unit === weight.unit &&
+    Math.abs(currentWeight.value - weight.value) < 0.000001;
+  if (!variant.inventoryItem.tracked && variant.inventoryItem.requiresShipping && weightMatches) return;
 
   const result = await adminGraphql<{
     productVariantsBulkUpdate: {
       productVariants: Array<{
         id: string;
-        inventoryItem: { tracked: boolean };
+        inventoryItem: {
+          tracked: boolean;
+          requiresShipping: boolean;
+          measurement: { weight: { value: number; unit: string } | null } | null;
+        };
       }>;
       userErrors: Array<{ field: string[] | null; message: string }>;
     };
   }>(
     admin,
     `#graphql
-    mutation DisableRopeCartVariantInventoryTracking($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    mutation UpdateRopeCartVariantInventorySettings($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
         productVariants {
           id
           inventoryItem {
             tracked
+            requiresShipping
+            measurement {
+              weight {
+                value
+                unit
+              }
+            }
           }
         }
         userErrors {
@@ -115,7 +149,11 @@ async function ensureRopeCartVariantUntracked(
       variants: [
         {
           id: variant.id,
-          inventoryItem: { tracked: false },
+          inventoryItem: {
+            tracked: false,
+            requiresShipping: true,
+            measurement: { weight },
+          },
         },
       ],
     },
@@ -127,10 +165,16 @@ async function ensureRopeCartVariantUntracked(
 
   const payload = result.data.productVariantsBulkUpdate;
   if (payload.userErrors.length > 0) {
-    throw new Error(`Inventarverfolgung der Zuschnitt-Variante konnte nicht deaktiviert werden: ${payload.userErrors.map((error) => error.message).join("; ")}`);
+    throw new Error(`Versandgewicht der Zuschnitt-Variante konnte nicht gesetzt werden: ${payload.userErrors.map((error) => error.message).join("; ")}`);
   }
-  if (payload.productVariants[0]?.inventoryItem.tracked !== false) {
-    throw new Error("Die Zuschnitt-Variante verfolgt weiterhin Inventar und kann dadurch als ausverkauft gelten.");
+  const updatedInventoryItem = payload.productVariants[0]?.inventoryItem;
+  if (
+    updatedInventoryItem?.tracked !== false ||
+    !updatedInventoryItem.requiresShipping ||
+    updatedInventoryItem.measurement?.weight?.unit !== weight.unit ||
+    Math.abs((updatedInventoryItem.measurement?.weight?.value ?? 0) - weight.value) >= 0.000001
+  ) {
+    throw new Error("Versandgewicht oder Versandpflicht der Zuschnitt-Variante wurde von Shopify nicht uebernommen.");
   }
 }
 
@@ -243,6 +287,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             name
             value
           }
+          inventoryItem {
+            measurement {
+              weight {
+                value
+                unit
+              }
+            }
+          }
           product {
             id
             title
@@ -293,7 +345,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
+    const sourceWeight = source.inventoryItem.measurement.weight;
+    if (!sourceWeight) {
+      return Response.json(
+        { ok: false, error: `Fuer ${source.product.title} fehlt das Varianten-Gewicht pro Meter.` },
+        { status: 400 },
+      );
+    }
+
     const unitPrice = calculateRopeUnitPrice(source.price, cut.lengthMeters, surcharge);
+    const configuredWeight = calculateRopeUnitWeight(sourceWeight.value, cut.lengthMeters);
     const configurationKey = createRopeCartConfigurationKey(
       source.id,
       cut.lengthMeters,
@@ -315,7 +376,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             id: string;
             sku: string | null;
             price: string;
-            inventoryItem: { id: string; tracked: boolean };
+            inventoryItem: {
+              id: string;
+              tracked: boolean;
+              requiresShipping: boolean;
+              measurement: { weight: { value: number; unit: string } | null } | null;
+            };
           }>;
           userErrors: Array<{ field: string[] | null; message: string }>;
         };
@@ -331,6 +397,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               inventoryItem {
                 id
                 tracked
+                requiresShipping
+                measurement {
+                  weight {
+                    value
+                    unit
+                  }
+                }
               }
             }
             userErrors {
@@ -344,7 +417,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           variants: [
             {
               price: unitPrice,
-              inventoryItem: { sku, tracked: false },
+              inventoryItem: {
+                sku,
+                tracked: false,
+                requiresShipping: true,
+                measurement: {
+                  weight: {
+                    value: configuredWeight,
+                    unit: sourceWeight.unit,
+                  },
+                },
+              },
               taxable: source.taxable,
               optionValues,
               metafields: [
@@ -392,7 +475,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
 
-    await ensureRopeCartVariantUntracked(admin, source.product.id, cartVariant);
+    await ensureRopeCartVariantInventorySettings(admin, source.product.id, cartVariant, {
+      value: configuredWeight,
+      unit: sourceWeight.unit,
+    });
     await publishRopeCartVariant(admin, cartVariant.id);
 
     return Response.json(
