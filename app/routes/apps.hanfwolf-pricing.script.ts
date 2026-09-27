@@ -160,7 +160,10 @@ const scriptBody = String.raw`(function () {
     }
 
     if (!response.ok || payload.ok === false) {
-      throw new Error(payload.error || "Der Hanfwolf-Preisservice hat die Anfrage abgelehnt.");
+      var details = Array.isArray(payload.details) ? " " + payload.details.join(" ") : "";
+      throw new Error(
+        (payload.error || "Der Hanfwolf-Preisservice hat die Anfrage abgelehnt.") + details,
+      );
     }
 
     return payload;

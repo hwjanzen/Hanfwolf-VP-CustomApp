@@ -123,9 +123,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
 
     if (!sourceResult.ok) {
+      console.error("Rope cart source variant lookup failed", {
+        shop: session.shop,
+        errors: sourceResult.errors,
+      });
       return Response.json(
         { ok: false, error: "Originalvariante konnte nicht geladen werden.", details: sourceResult.errors },
-        { status: 502 },
+        { headers: { "Cache-Control": "no-store" } },
       );
     }
 
@@ -210,9 +214,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
 
       if (!createResult.ok) {
+        console.error("Rope cart variant creation request failed", {
+          shop: session.shop,
+          productId: source.product.id,
+          errors: createResult.errors,
+        });
         return Response.json(
           { ok: false, error: "Zuschnitt-Variante konnte nicht angelegt werden.", details: createResult.errors },
-          { status: 502 },
+          { headers: { "Cache-Control": "no-store" } },
         );
       }
 
@@ -257,7 +266,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         error: "Unerwarteter Serverfehler beim Anlegen der Zuschnitt-Variante.",
         details: [error instanceof Error ? error.message : String(error)],
       },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   }
 };
