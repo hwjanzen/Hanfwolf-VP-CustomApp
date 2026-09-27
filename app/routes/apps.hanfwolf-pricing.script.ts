@@ -222,6 +222,30 @@ const scriptBody = String.raw`(function () {
           description,
       );
 
+      var retryAfterHeader = cartResponse.headers.get("Retry-After");
+      var retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : Number.NaN;
+      if (cartResponse.status === 429) {
+        if (
+          attempt < retryDelays.length &&
+          Number.isFinite(retryAfterSeconds) &&
+          retryAfterSeconds >= 0 &&
+          retryAfterSeconds <= 15
+        ) {
+          await new Promise(function (resolve) {
+            window.setTimeout(
+              resolve,
+              Math.max(retryDelays[attempt], retryAfterSeconds * 1000),
+            );
+          });
+          continue;
+        }
+
+        var waitMessage = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 15
+          ? " Shopify bittet, " + Math.ceil(retryAfterSeconds) + " Sekunden zu warten."
+          : " Shopify bittet, es in einigen Minuten erneut zu versuchen.";
+        throw new Error(lastError.message + waitMessage);
+      }
+
       var mayBeTemporarilyUnavailable =
         cartResponse.status === 422 &&
         /cannot find variant|variant not found|unavailable|not available|sold out|inventory/i.test(description);
