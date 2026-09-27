@@ -197,7 +197,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           variants: [
             {
               price: unitPrice,
-              sku,
+              inventoryItem: { sku },
               taxable: source.taxable,
               optionValues,
               metafields: [
