@@ -3,10 +3,12 @@ import { authenticate } from "../shopify.server";
 import { normalizeCustomerId, normalizeVariantId } from "../services/price-resolver.server";
 import {
   calculateRopeShippingPrice,
+  calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
   isRopeProductType,
   parseRopeCartConfigurationKey,
+  type RopeCartConfiguration,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
 
@@ -32,6 +34,21 @@ type VariantNode = {
     id: string;
     title: string;
     productType: string;
+  };
+};
+
+type RopeProductNode = {
+  id: string;
+  title: string;
+  productType: string;
+  haspelSurcharge: { value: string } | null;
+  variants: {
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      taxable: boolean;
+      ropeConfiguration: { value: string } | null;
+    }>;
   };
 };
 
@@ -116,6 +133,50 @@ async function loadVariants(admin: unknown, ids: string[]) {
   );
 }
 
+async function loadRopeProducts(admin: unknown, ids: string[]) {
+  if (ids.length === 0) return new Map<string, RopeProductNode>();
+
+  const result = await adminGraphql<{
+    nodes: Array<RopeProductNode | null>;
+  }>(
+    admin,
+    `#graphql
+    query RopeCartDraftOrderProducts($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        ... on Product {
+          id
+          title
+          productType
+          haspelSurcharge: metafield(namespace: "custom", key: "haspel_surcharge") {
+            value
+          }
+          variants(first: 250) {
+            nodes {
+              id
+              sku
+              taxable
+              ropeConfiguration: metafield(namespace: "hanfwolf", key: "rope_configuration") {
+                value
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { ids },
+  );
+
+  if (!result.ok) {
+    throw new Error(`Hauptprodukte konnten nicht geladen werden: ${result.errors.join(" | ")}`);
+  }
+
+  return new Map(
+    result.data.nodes
+      .filter((node): node is RopeProductNode => Boolean(node?.id))
+      .map((node) => [node.id, node]),
+  );
+}
+
 function getWeightKilograms(variant: VariantNode, quantity: number) {
   const weight = variant.inventoryItem.measurement.weight;
   if (!weight) {
@@ -172,10 +233,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
 
-    const originalVariants = await loadVariants(
-      admin,
-      [...new Set([...ropeConfigurations.values()].map((configuration) => configuration.variantId))],
-    );
+    const configurations = [...ropeConfigurations.values()];
+    const legacyVariantIds = configurations
+      .filter((configuration): configuration is Extract<RopeCartConfiguration, { version: "v1" }> => configuration.version === "v1")
+      .map((configuration) => configuration.variantId);
+    const ropeProductIds = configurations
+      .filter((configuration): configuration is Extract<RopeCartConfiguration, { version: "v2" }> => configuration.version === "v2")
+      .map((configuration) => configuration.productId);
+    const [originalVariants, ropeProducts] = await Promise.all([
+      loadVariants(admin, [...new Set(legacyVariantIds)]),
+      loadRopeProducts(admin, [...new Set(ropeProductIds)]),
+    ]);
     const shopResult = await adminGraphql<{ shop: { currencyCode: string } }>(
       admin,
       `#graphql
@@ -214,6 +282,90 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           customAttributes: Object.entries(item.properties)
             .filter(([key]) => !key.startsWith("_hanfwolf_"))
             .map(([key, value]) => ({ key, value })),
+        });
+        continue;
+      }
+
+      if (configuration.version === "v2") {
+        const product = ropeProducts.get(configuration.productId);
+        if (!product || !isRopeProductType(product.productType)) {
+          return Response.json(
+            { ok: false, error: "Das Hauptprodukt des Seil-Zuschnitts wurde nicht gefunden oder ist kein Spezialseil." },
+            { status: 400 },
+          );
+        }
+
+        const presentation = item.properties.Aufmachung;
+        if (presentation !== "Ring" && presentation !== "Haspel") {
+          return Response.json(
+            { ok: false, error: "Aufmachung fehlt oder ist ungueltig. Bitte den Zuschnitt erneut konfigurieren." },
+            { status: 400 },
+          );
+        }
+
+        const baseUnitPrice = calculateRopeUnitPrice(
+          configuration.meterPrice,
+          configuration.lengthMeters,
+        );
+        if (Number(cartVariant.price).toFixed(2) !== baseUnitPrice) {
+          return Response.json(
+            { ok: false, error: "Der Cart-Preis passt nicht mehr zum gespeicherten Produktpreis. Bitte den Zuschnitt erneut hinzufuegen." },
+            { status: 400 },
+          );
+        }
+
+        const surcharge = presentation === "Haspel" ? product.haspelSurcharge?.value : "0";
+        if (presentation === "Haspel" && !surcharge) {
+          return Response.json(
+            { ok: false, error: `Fuer ${product.title} fehlt custom.haspel_surcharge.` },
+            { status: 400 },
+          );
+        }
+
+        const unitPrice = calculateRopeUnitPrice(
+          configuration.meterPrice,
+          configuration.lengthMeters,
+          surcharge,
+        );
+        const unitWeight = calculateRopeUnitWeight(
+          configuration.weightPerMeter,
+          configuration.lengthMeters,
+        );
+        const unitWeightKilograms = Number(
+          convertWeightToKilograms(unitWeight, configuration.weightUnit).toFixed(6),
+        );
+        totalWeightKilograms += Number((unitWeightKilograms * item.quantity).toFixed(6));
+
+        const masterVariant = product.variants.nodes.find(
+          (variant) => !variant.ropeConfiguration?.value,
+        );
+        if (!masterVariant) {
+          return Response.json(
+            { ok: false, error: `Fuer ${product.title} wurde keine unveraenderte Stammdaten-Variante gefunden.` },
+            { status: 400 },
+          );
+        }
+
+        lineItems.push({
+          title: product.title,
+          quantity: item.quantity,
+          originalUnitPriceWithCurrency: {
+            amount: unitPrice,
+            currencyCode,
+          },
+          weight: {
+            value: unitWeight,
+            unit: configuration.weightUnit,
+          },
+          requiresShipping: true,
+          taxable: masterVariant.taxable,
+          ...(masterVariant.sku ? { sku: masterVariant.sku } : {}),
+          customAttributes: [
+            { key: "Laenge", value: `${configuration.lengthMeters} m` },
+            { key: "Aufmachung", value: presentation },
+            { key: "Hauptprodukt", value: product.id },
+            { key: "_hanfwolf_rope_configuration", value: cartVariant.ropeConfiguration!.value },
+          ],
         });
         continue;
       }

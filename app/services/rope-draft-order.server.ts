@@ -5,6 +5,32 @@ export type RopeCut = {
   presentation: "Ring" | "Haspel";
 };
 
+export type RopeProductCut = {
+  productId: string;
+  quantity: number;
+  lengthMeters: string;
+  presentation: "Ring" | "Haspel";
+};
+
+export type RopeCartConfiguration =
+  | {
+      version: "v1";
+      variantId: string;
+      quantity: number;
+      lengthMeters: string;
+      presentation: "Ring" | "Haspel";
+      unitPrice: string;
+    }
+  | {
+      version: "v2";
+      productId: string;
+      lengthMeters: string;
+      meterPrice: string;
+      weightPerMeter: number;
+      weightUnit: string;
+      unitPrice: string;
+    };
+
 export function isRopeProductType(productType: string) {
   return productType.trim().toLowerCase().startsWith("spezialseil");
 }
@@ -64,6 +90,39 @@ export function normalizeRopeCuts(value: unknown): RopeCut[] {
   });
 }
 
+export function normalizeRopeProductCut(value: unknown): RopeProductCut {
+  if (!value || typeof value !== "object") {
+    throw new Error("Der Seil-Zuschnitt ist ungueltig.");
+  }
+
+  const input = value as Record<string, unknown>;
+  const productId = String(input.productId || "").trim();
+  const quantity = Number(input.quantity);
+  const lengthMeters = String(input.lengthMeters || "").trim();
+  const presentation = String(input.presentation || "Ring");
+  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Laenge");
+
+  if (!/^gid:\/\/shopify\/Product\/\d+$/.test(productId)) {
+    throw new Error("Produkt-ID des Seils ist ungueltig.");
+  }
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) {
+    throw new Error("Menge muss zwischen 1 und 999 liegen.");
+  }
+  if (lengthHundredths < 50 || lengthHundredths > 50_000) {
+    throw new Error("Laenge muss zwischen 0,5 und 500 m liegen.");
+  }
+  if (presentation !== "Ring" && presentation !== "Haspel") {
+    throw new Error("Aufmachung ist ungueltig.");
+  }
+
+  return {
+    productId,
+    quantity,
+    lengthMeters: (lengthHundredths / 100).toString(),
+    presentation,
+  };
+}
+
 export function calculateRopeUnitPrice(
   meterPrice: string,
   lengthMeters: string,
@@ -79,52 +138,100 @@ export function calculateRopeUnitPrice(
 }
 
 export function createRopeCartConfigurationKey(
-  originalVariantId: string,
+  productId: string,
   lengthMeters: string,
-  presentation: RopeCut["presentation"],
-  unitPrice: string,
+  meterPrice: string,
+  weightPerMeter: number,
+  weightUnit: string,
 ) {
-  const normalizedCut = normalizeRopeCuts([
-    {
-      variantId: originalVariantId,
-      quantity: 1,
-      lengthMeters,
-      presentation,
-    },
-  ])[0];
-  const priceCents = parseScaledDecimal(unitPrice, 2, "Preis");
+  const normalizedCut = normalizeRopeProductCut({
+    productId,
+    quantity: 1,
+    lengthMeters,
+    presentation: "Ring",
+  });
+  const priceCents = parseScaledDecimal(meterPrice, 2, "Meterpreis");
+  if (!Number.isFinite(weightPerMeter) || weightPerMeter <= 0) {
+    throw new Error("Das Gewicht pro Meter muss groesser als 0 sein.");
+  }
+  if (!/^(GRAMS|KILOGRAMS|POUNDS|OUNCES)$/.test(weightUnit)) {
+    throw new Error("Die Gewichtseinheit wird nicht unterstuetzt.");
+  }
 
   return [
-    "v1",
-    normalizedCut.variantId,
+    "v2",
+    normalizedCut.productId,
     normalizedCut.lengthMeters,
-    normalizedCut.presentation,
     priceCents,
+    weightPerMeter.toString(),
+    weightUnit,
   ].join("|");
 }
 
-export function parseRopeCartConfigurationKey(value: string) {
-  const [version, originalVariantId, lengthMeters, presentation, priceCents] = value.split("|");
-  if (version !== "v1" || !originalVariantId || !lengthMeters || !presentation || !priceCents) {
-    throw new Error("Die Zuschnitt-Variante hat keinen gueltigen Konfigurationsschluessel.");
+export function parseRopeCartConfigurationKey(value: string): RopeCartConfiguration {
+  const [version, ...parts] = value.split("|");
+
+  if (version === "v1") {
+    const [variantId, lengthMeters, presentation, priceCents] = parts;
+    if (!variantId || !lengthMeters || !presentation || !priceCents) {
+      throw new Error("Die Zuschnitt-Variante hat keinen gueltigen Konfigurationsschluessel.");
+    }
+
+    const normalizedCut = normalizeRopeCuts([
+      {
+        variantId,
+        quantity: 1,
+        lengthMeters,
+        presentation,
+      },
+    ])[0];
+    if (!/^\d+$/.test(priceCents)) {
+      throw new Error("Die Zuschnitt-Variante hat einen ungueltigen Preis.");
+    }
+
+    return {
+      version: "v1",
+      ...normalizedCut,
+      unitPrice: (Number(priceCents) / 100).toFixed(2),
+    };
   }
 
-  const normalizedCut = normalizeRopeCuts([
-    {
-      variantId: originalVariantId,
+  if (version === "v2") {
+    const [productId, lengthMeters, priceCents, weightValue, weightUnit] = parts;
+    if (!productId || !lengthMeters || !priceCents || !weightValue || !weightUnit) {
+      throw new Error("Die Produkt-Zuschnittvariante hat keinen gueltigen Konfigurationsschluessel.");
+    }
+
+    const normalizedCut = normalizeRopeProductCut({
+      productId,
       quantity: 1,
       lengthMeters,
-      presentation,
-    },
- ])[0];
-  if (!/^\d+$/.test(priceCents)) {
-    throw new Error("Die Zuschnitt-Variante hat einen ungueltigen Preis.");
+      presentation: "Ring",
+    });
+    if (!/^\d+$/.test(priceCents)) {
+      throw new Error("Der Meterpreis im Konfigurationsschluessel ist ungueltig.");
+    }
+    const meterPrice = (Number(priceCents) / 100).toFixed(2);
+    const weightPerMeter = Number(weightValue);
+    if (!Number.isFinite(weightPerMeter) || weightPerMeter <= 0) {
+      throw new Error("Das Gewicht im Konfigurationsschluessel ist ungueltig.");
+    }
+    if (!/^(GRAMS|KILOGRAMS|POUNDS|OUNCES)$/.test(weightUnit)) {
+      throw new Error("Die Gewichtseinheit im Konfigurationsschluessel wird nicht unterstuetzt.");
+    }
+
+    return {
+      version: "v2",
+      productId: normalizedCut.productId,
+      lengthMeters: normalizedCut.lengthMeters,
+      meterPrice,
+      weightPerMeter,
+      weightUnit,
+      unitPrice: calculateRopeUnitPrice(meterPrice, normalizedCut.lengthMeters),
+    };
   }
 
-  return {
-    ...normalizedCut,
-    unitPrice: (Number(priceCents) / 100).toFixed(2),
-  };
+  throw new Error("Die Version des Zuschnitt-Konfigurationsschluessels wird nicht unterstuetzt.");
 }
 
 export function calculateRopeUnitWeight(

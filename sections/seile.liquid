@@ -252,9 +252,9 @@
       showError('');
       if (!form.reportValidity()) return;
 
-      const variantId = 'gid://shopify/ProductVariant/{{ product.selected_or_first_available_variant.id }}';
+      const productId = 'gid://shopify/Product/{{ product.id }}';
       const items = Array.from(cutsContainer.querySelectorAll('.rope-cut')).map((cut) => ({
-        variantId,
+        productId,
         quantity: Number(cut.querySelector('[data-rope-quantity]').value),
         lengthMeters: cut.querySelector('[data-rope-length]').value,
         presentation: cut.querySelector('[data-rope-presentation]:checked').value,

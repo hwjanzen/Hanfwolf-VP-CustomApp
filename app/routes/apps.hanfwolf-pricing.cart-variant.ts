@@ -6,7 +6,7 @@ import {
   calculateRopeUnitWeight,
   createRopeCartConfigurationKey,
   isRopeProductType,
-  normalizeRopeCuts,
+  normalizeRopeProductCut,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
 
@@ -16,18 +16,21 @@ type SourceVariant = {
   sku: string | null;
   taxable: boolean;
   selectedOptions: Array<{ name: string; value: string }>;
+  ropeConfiguration: { value: string } | null;
   inventoryItem: {
     measurement: {
       weight: { value: number; unit: string } | null;
     };
   };
-  product: {
-    id: string;
-    title: string;
-    productType: string;
-    options: Array<{ id: string; name: string }>;
-    haspelSurcharge: { value: string } | null;
-  };
+};
+
+type SourceProduct = {
+  id: string;
+  title: string;
+  productType: string;
+  options: Array<{ id: string; name: string }>;
+  haspelSurcharge: { value: string } | null;
+  variants: { nodes: SourceVariant[] };
 };
 
 type ExistingCartVariant = {
@@ -264,7 +267,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let cut;
     try {
       const body = await request.json();
-      cut = normalizeRopeCuts([body?.item])[0];
+      cut = normalizeRopeProductCut(body?.item);
     } catch (error) {
       return Response.json(
         { ok: false, error: error instanceof Error ? error.message : "Ungueltige Anfrage." },
@@ -273,236 +276,253 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const sourceResult = await adminGraphql<{
-      productVariant: SourceVariant | null;
+      product: SourceProduct | null;
     }>(
       admin,
       `#graphql
-      query RopeCartSourceVariant($variantId: ID!) {
-        productVariant(id: $variantId) {
-          id
-          price
-          sku
-          taxable
-          selectedOptions {
-            name
-            value
-          }
-          inventoryItem {
-            measurement {
-              weight {
-                value
-                unit
-              }
-            }
-          }
-          product {
-            id
-            title
-            productType
-            options {
+      query RopeCartMasterProduct($productId: ID!) {
+            product(id: $productId) {
               id
-              name
-            }
-            haspelSurcharge: metafield(namespace: "custom", key: "haspel_surcharge") {
-              value
-            }
-          }
-        }
-      }`,
-      { variantId: cut.variantId },
-    );
-
-    if (!sourceResult.ok) {
-      console.error("Rope cart source variant lookup failed", {
-        shop: session.shop,
-        errors: sourceResult.errors,
-      });
-      return Response.json(
-        { ok: false, error: "Originalvariante konnte nicht geladen werden.", details: sourceResult.errors },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-    }
-
-    const source = sourceResult.data.productVariant;
-    if (!source || !isRopeProductType(source.product.productType)) {
-      return Response.json(
-        { ok: false, error: "Die ausgewaehlte Variante ist kein Spezialseil." },
-        { status: 400 },
-      );
-    }
-    if (source.selectedOptions.length === 0 || source.selectedOptions.length !== source.product.options.length) {
-      return Response.json(
-        { ok: false, error: "Das Produkt hat kein vollstaendiges Optionsmodell fuer Zuschnitt-Varianten." },
-        { status: 400 },
-      );
-    }
-
-    const surcharge = cut.presentation === "Haspel" ? source.product.haspelSurcharge?.value : "0";
-    if (cut.presentation === "Haspel" && !surcharge) {
-      return Response.json(
-        { ok: false, error: `Fuer ${source.product.title} fehlt custom.haspel_surcharge.` },
-        { status: 400 },
-      );
-    }
-
-    const sourceWeight = source.inventoryItem.measurement.weight;
-    if (!sourceWeight || !Number.isFinite(sourceWeight.value) || sourceWeight.value <= 0) {
-      const measuredWeight = sourceWeight
-        ? `${sourceWeight.value} ${sourceWeight.unit}`
-        : "nicht gepflegt";
-      return Response.json(
-        {
-          ok: false,
-          error: `Fuer ${source.product.title} (Originalvariante ${source.id}) muss ein positives Gewicht pro Meter gepflegt sein. Shopify liefert aktuell: ${measuredWeight}.`,
-        },
-        { status: 400 },
-      );
-    }
-
-    const unitPrice = calculateRopeUnitPrice(source.price, cut.lengthMeters, surcharge);
-    const configuredWeight = calculateRopeUnitWeight(sourceWeight.value, cut.lengthMeters);
-    const configurationKey = createRopeCartConfigurationKey(
-      source.id,
-      cut.lengthMeters,
-      cut.presentation,
-      unitPrice,
-    );
-    const sku = createConfigurationSku(configurationKey);
-    let cartVariant = await findRopeCartVariant(admin, sku, configurationKey);
-
-    if (!cartVariant) {
-      const configurationLabel = `Konfiguration ${sku.slice(-8)}`;
-      const optionValues = source.selectedOptions.map((option, index) => ({
-        optionName: option.name,
-        name: index === source.selectedOptions.length - 1 ? configurationLabel : option.value,
-      }));
-      const createResult = await adminGraphql<{
-        productVariantsBulkCreate: {
-          productVariants: Array<{
-            id: string;
-            sku: string | null;
-            price: string;
-            inventoryItem: {
-              id: string;
-              tracked: boolean;
-              requiresShipping: boolean;
-              measurement: { weight: { value: number; unit: string } | null } | null;
-            };
-          }>;
-          userErrors: Array<{ field: string[] | null; message: string }>;
-        };
-      }>(
-        admin,
-        `#graphql
-        mutation CreateRopeCartVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-          productVariantsBulkCreate(productId: $productId, variants: $variants) {
-            productVariants {
-              id
-              sku
-              price
-              inventoryItem {
+              title
+              productType
+              options {
                 id
-                tracked
-                requiresShipping
-                measurement {
-                  weight {
+                name
+              }
+              haspelSurcharge: metafield(namespace: "custom", key: "haspel_surcharge") {
+                value
+              }
+              variants(first: 250) {
+                nodes {
+                  id
+                  price
+                  sku
+                  taxable
+                  selectedOptions {
+                    name
                     value
-                    unit
+                  }
+                  ropeConfiguration: metafield(namespace: "hanfwolf", key: "rope_configuration") {
+                    value
+                  }
+                  inventoryItem {
+                    measurement {
+                      weight {
+                        value
+                        unit
+                      }
+                    }
                   }
                 }
               }
             }
-            userErrors {
-              field
-              message
-            }
-          }
-        }`,
-        {
-          productId: source.product.id,
-          variants: [
+          }`,
+          { productId: cut.productId },
+        );
+
+        if (!sourceResult.ok) {
+          console.error("Rope cart master product lookup failed", {
+            shop: session.shop,
+            productId: cut.productId,
+            errors: sourceResult.errors,
+          });
+          return Response.json(
+            { ok: false, error: "Hauptprodukt konnte nicht geladen werden.", details: sourceResult.errors },
+            { headers: { "Cache-Control": "no-store" } },
+          );
+        }
+
+        const sourceProduct = sourceResult.data.product;
+        if (!sourceProduct || !isRopeProductType(sourceProduct.productType)) {
+          return Response.json(
+            { ok: false, error: "Das ausgewaehlte Hauptprodukt ist kein Spezialseil." },
+            { status: 400 },
+          );
+        }
+
+        const source = sourceProduct.variants.nodes.find(
+          (variant) => !variant.ropeConfiguration?.value,
+        );
+        if (!source) {
+          return Response.json(
+            { ok: false, error: `Fuer ${sourceProduct.title} wurde keine unveraenderte Stammdaten-Variante gefunden.` },
+            { status: 400 },
+          );
+        }
+        if (source.selectedOptions.length === 0 || source.selectedOptions.length !== sourceProduct.options.length) {
+          return Response.json(
+            { ok: false, error: "Das Hauptprodukt hat kein vollstaendiges Optionsmodell fuer Zuschnitt-Varianten." },
+            { status: 400 },
+          );
+        }
+
+        const surcharge = cut.presentation === "Haspel" ? sourceProduct.haspelSurcharge?.value : "0";
+        if (cut.presentation === "Haspel" && !surcharge) {
+          return Response.json(
+            { ok: false, error: `Fuer ${sourceProduct.title} fehlt custom.haspel_surcharge.` },
+            { status: 400 },
+          );
+        }
+
+        const sourceWeight = source.inventoryItem.measurement.weight;
+        if (!sourceWeight || !Number.isFinite(sourceWeight.value) || sourceWeight.value <= 0) {
+          const measuredWeight = sourceWeight
+            ? `${sourceWeight.value} ${sourceWeight.unit}`
+            : "nicht gepflegt";
+          return Response.json(
             {
-              price: unitPrice,
-              inventoryItem: {
-                sku,
-                tracked: false,
-                requiresShipping: true,
-                measurement: {
-                  weight: {
-                    value: configuredWeight,
-                    unit: sourceWeight.unit,
-                  },
-                },
-              },
-              taxable: source.taxable,
-              optionValues,
-              metafields: [
+              ok: false,
+              error: `Fuer ${sourceProduct.title} muss ein positives Gewicht pro Meter gepflegt sein. Shopify liefert aktuell: ${measuredWeight}.`,
+            },
+            { status: 400 },
+          );
+        }
+
+        const unitPrice = calculateRopeUnitPrice(source.price, cut.lengthMeters);
+        const configuredWeight = calculateRopeUnitWeight(sourceWeight.value, cut.lengthMeters);
+        const configurationKey = createRopeCartConfigurationKey(
+          sourceProduct.id,
+          cut.lengthMeters,
+          source.price,
+          sourceWeight.value,
+          sourceWeight.unit,
+        );
+        const sku = createConfigurationSku(configurationKey);
+        let cartVariant = await findRopeCartVariant(admin, sku, configurationKey);
+
+        if (!cartVariant) {
+          const configurationLabel = `Zuschnitt ${cut.lengthMeters} m ${sku.slice(-8)}`;
+          const optionValues = source.selectedOptions.map((option, index) => ({
+            optionName: option.name,
+            name: index === source.selectedOptions.length - 1 ? configurationLabel : option.value,
+          }));
+          const createResult = await adminGraphql<{
+            productVariantsBulkCreate: {
+              productVariants: Array<{
+                id: string;
+                sku: string | null;
+                price: string;
+                inventoryItem: {
+                  id: string;
+                  tracked: boolean;
+                  requiresShipping: boolean;
+                  measurement: { weight: { value: number; unit: string } | null } | null;
+                };
+              }>;
+              userErrors: Array<{ field: string[] | null; message: string }>;
+            };
+          }>(
+            admin,
+            `#graphql
+            mutation CreateRopeCartVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                productVariants {
+                  id
+                  sku
+                  price
+                  inventoryItem {
+                    id
+                    tracked
+                    requiresShipping
+                    measurement {
+                      weight {
+                        value
+                        unit
+                      }
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`,
+            {
+              productId: sourceProduct.id,
+              variants: [
                 {
-                  namespace: "hanfwolf",
-                  key: "rope_configuration",
-                  type: "single_line_text_field",
-                  value: configurationKey,
+                  price: unitPrice,
+                  inventoryItem: {
+                    sku,
+                    tracked: false,
+                    requiresShipping: true,
+                    measurement: {
+                      weight: {
+                        value: configuredWeight,
+                        unit: sourceWeight.unit,
+                      },
+                    },
+                  },
+                  taxable: source.taxable,
+                  optionValues,
+                  metafields: [
+                    {
+                      namespace: "hanfwolf",
+                      key: "rope_configuration",
+                      type: "single_line_text_field",
+                      value: configurationKey,
+                    },
+                  ],
                 },
               ],
             },
-          ],
-        },
-      );
+          );
 
-      if (!createResult.ok) {
-        console.error("Rope cart variant creation request failed", {
-          shop: session.shop,
-          productId: source.product.id,
-          errors: createResult.errors,
-        });
-        return Response.json(
-          { ok: false, error: "Zuschnitt-Variante konnte nicht angelegt werden.", details: createResult.errors },
-          { headers: { "Cache-Control": "no-store" } },
-        );
-      }
-
-      const payload = createResult.data.productVariantsBulkCreate;
-      const createdVariant = payload.productVariants[0];
-      cartVariant = createdVariant
-        ? {
-            ...createdVariant,
-            metafield: { value: configurationKey },
+          if (!createResult.ok) {
+            console.error("Rope cart variant creation request failed", {
+              shop: session.shop,
+              productId: sourceProduct.id,
+              errors: createResult.errors,
+            });
+            return Response.json(
+              { ok: false, error: "Zuschnitt-Variante konnte nicht angelegt werden.", details: createResult.errors },
+              { headers: { "Cache-Control": "no-store" } },
+            );
           }
-        : undefined;
-      if (!cartVariant) {
+
+          const payload = createResult.data.productVariantsBulkCreate;
+          const createdVariant = payload.productVariants[0];
+          cartVariant = createdVariant
+            ? {
+                ...createdVariant,
+                metafield: { value: configurationKey },
+              }
+            : undefined;
+          if (!cartVariant) {
+            return Response.json(
+              {
+                ok: false,
+                error: "Shopify hat die Zuschnitt-Variante abgelehnt.",
+                details: payload.userErrors.map((error) => error.message),
+              },
+              { status: 400 },
+            );
+          }
+        }
+
+        await ensureRopeCartVariantInventorySettings(admin, sourceProduct.id, cartVariant, {
+          value: configuredWeight,
+          unit: sourceWeight.unit,
+        });
+        await publishRopeCartVariant(admin, cartVariant.id);
+
         return Response.json(
           {
-            ok: false,
-            error: "Shopify hat die Zuschnitt-Variante abgelehnt.",
-            details: payload.userErrors.map((error) => error.message),
+            ok: true,
+            cartVariantId: cartVariant.id,
+            cartVariantNumericId: getNumericVariantId(cartVariant.id),
+            quantity: cut.quantity,
+            unitPrice,
+            properties: {
+              OriginalProductId: sourceProduct.id,
+              Laenge: `${cut.lengthMeters} m`,
+              Aufmachung: cut.presentation,
+              _hanfwolf_rope_configuration: configurationKey,
+            },
           },
-          { status: 400 },
+          { headers: { "Cache-Control": "no-store" } },
         );
-      }
-    }
-
-    await ensureRopeCartVariantInventorySettings(admin, source.product.id, cartVariant, {
-      value: configuredWeight,
-      unit: sourceWeight.unit,
-    });
-    await publishRopeCartVariant(admin, cartVariant.id);
-
-    return Response.json(
-      {
-        ok: true,
-        cartVariantId: cartVariant.id,
-        cartVariantNumericId: getNumericVariantId(cartVariant.id),
-        quantity: cut.quantity,
-        unitPrice,
-        properties: {
-          OriginalVariantId: source.id,
-          Laenge: `${cut.lengthMeters} m`,
-          Aufmachung: cut.presentation,
-          _hanfwolf_rope_configuration: configurationKey,
-        },
-      },
-      { headers: { "Cache-Control": "no-store" } },
-    );
   } catch (error) {
     console.error("Unexpected rope cart variant error", error);
     return Response.json(

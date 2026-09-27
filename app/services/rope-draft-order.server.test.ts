@@ -27,32 +27,81 @@ describe("rope draft order pricing", () => {
   it("creates the same cart configuration key for equivalent decimal input", () => {
     expect(
       createRopeCartConfigurationKey(
-        "gid://shopify/ProductVariant/123",
+        "gid://shopify/Product/123",
         "1,30",
-        "Haspel",
-        "8.27",
+        "10.00",
+        0.35,
+        "KILOGRAMS",
       ),
     ).toBe(
       createRopeCartConfigurationKey(
-        "gid://shopify/ProductVariant/123",
+        "gid://shopify/Product/123",
         "1.3",
-        "Haspel",
-        "8.27",
+        "10",
+        0.35,
+        "KILOGRAMS",
       ),
     );
   });
 
-  it("parses a server-generated cart configuration key", () => {
+  it("parses a product-based configuration with a price and weight snapshot", () => {
     expect(
       parseRopeCartConfigurationKey(
         createRopeCartConfigurationKey(
-          "gid://shopify/ProductVariant/123",
+          "gid://shopify/Product/123",
           "1.3",
-          "Haspel",
-          "8.27",
+          "10.00",
+          0.35,
+          "KILOGRAMS",
         ),
       ),
     ).toEqual({
+      version: "v2",
+      productId: "gid://shopify/Product/123",
+      lengthMeters: "1.3",
+      meterPrice: "10.00",
+      weightPerMeter: 0.35,
+      weightUnit: "KILOGRAMS",
+      unitPrice: "13.00",
+    });
+  });
+
+  it("creates a new configuration key when the master price or weight changes", () => {
+    const baseline = createRopeCartConfigurationKey(
+      "gid://shopify/Product/123",
+      "2.5",
+      "10.00",
+      0.35,
+      "KILOGRAMS",
+    );
+
+    expect(
+      createRopeCartConfigurationKey(
+        "gid://shopify/Product/123",
+        "2.5",
+        "10.01",
+        0.35,
+        "KILOGRAMS",
+      ),
+    ).not.toBe(baseline);
+    expect(
+      createRopeCartConfigurationKey(
+        "gid://shopify/Product/123",
+        "2.5",
+        "10.00",
+        0.36,
+        "KILOGRAMS",
+      ),
+    ).not.toBe(baseline);
+  });
+
+  it("continues to parse legacy v1 cart configurations", () => {
+    expect(
+      parseRopeCartConfigurationKey(
+        "v1|gid://shopify/ProductVariant/123|1.3|Haspel|827",
+      ),
+    ).toEqual({
+      version: "v1",
       variantId: "gid://shopify/ProductVariant/123",
       quantity: 1,
       lengthMeters: "1.3",
