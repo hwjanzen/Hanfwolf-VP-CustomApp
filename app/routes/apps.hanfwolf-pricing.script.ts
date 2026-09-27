@@ -140,11 +140,23 @@ const scriptBody = String.raw`(function () {
 
   async function requestJson(url, options) {
     var response = await fetch(url, options);
+    var responseText = await response.text();
     var payload;
     try {
-      payload = await response.json();
+      payload = JSON.parse(responseText);
     } catch (error) {
-      throw new Error("Ungueltige Antwort vom Hanfwolf-Preisservice.");
+      var contentType = response.headers.get("content-type") || "unbekannt";
+      var responsePreview = responseText.trim().slice(0, 180);
+      throw new Error(
+        "Hanfwolf-Preisservice lieferte kein JSON (HTTP " +
+          response.status +
+          ", " +
+          contentType +
+          ", " +
+          response.url +
+          ")" +
+          (responsePreview ? ": " + responsePreview : "."),
+      );
     }
 
     if (!response.ok || payload.ok === false) {
