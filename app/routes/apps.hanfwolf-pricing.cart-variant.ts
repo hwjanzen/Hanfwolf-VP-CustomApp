@@ -29,6 +29,7 @@ type ExistingCartVariant = {
   sku: string | null;
   price: string;
   metafield: { value: string } | null;
+  inventoryItem: { id: string; tracked: boolean };
 };
 
 function createConfigurationSku(configurationKey: string) {
@@ -58,6 +59,10 @@ async function findRopeCartVariant(
           metafield(namespace: "hanfwolf", key: "rope_configuration") {
             value
           }
+          inventoryItem {
+            id
+            tracked
+          }
         }
       }
     }`,
@@ -71,6 +76,62 @@ async function findRopeCartVariant(
   return result.data.productVariants.nodes.find(
     (variant) => variant.metafield?.value === configurationKey,
   );
+}
+
+async function ensureRopeCartVariantUntracked(
+  admin: unknown,
+  productId: string,
+  variant: ExistingCartVariant,
+) {
+  if (!variant.inventoryItem.tracked) return;
+
+  const result = await adminGraphql<{
+    productVariantsBulkUpdate: {
+      productVariants: Array<{
+        id: string;
+        inventoryItem: { tracked: boolean };
+      }>;
+      userErrors: Array<{ field: string[] | null; message: string }>;
+    };
+  }>(
+    admin,
+    `#graphql
+    mutation DisableRopeCartVariantInventoryTracking($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+        productVariants {
+          id
+          inventoryItem {
+            tracked
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`,
+    {
+      productId,
+      variants: [
+        {
+          id: variant.id,
+          inventoryItem: { tracked: false },
+        },
+      ],
+    },
+  );
+
+  if (!result.ok) {
+    throw new Error(`Inventarverfolgung der Zuschnitt-Variante konnte nicht deaktiviert werden: ${result.errors.join(" | ")}`);
+  }
+
+  const payload = result.data.productVariantsBulkUpdate;
+  if (payload.userErrors.length > 0) {
+    throw new Error(`Inventarverfolgung der Zuschnitt-Variante konnte nicht deaktiviert werden: ${payload.userErrors.map((error) => error.message).join("; ")}`);
+  }
+  if (payload.productVariants[0]?.inventoryItem.tracked !== false) {
+    throw new Error("Die Zuschnitt-Variante verfolgt weiterhin Inventar und kann dadurch als ausverkauft gelten.");
+  }
 }
 
 async function publishRopeCartVariant(admin: unknown, variantId: string) {
@@ -250,7 +311,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }));
       const createResult = await adminGraphql<{
         productVariantsBulkCreate: {
-          productVariants: Array<{ id: string; sku: string | null; price: string }>;
+          productVariants: Array<{
+            id: string;
+            sku: string | null;
+            price: string;
+            inventoryItem: { id: string; tracked: boolean };
+          }>;
           userErrors: Array<{ field: string[] | null; message: string }>;
         };
       }>(
@@ -262,6 +328,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               id
               sku
               price
+              inventoryItem {
+                id
+                tracked
+              }
             }
             userErrors {
               field
@@ -305,7 +375,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const payload = createResult.data.productVariantsBulkCreate;
       const createdVariant = payload.productVariants[0];
       cartVariant = createdVariant
-        ? { ...createdVariant, metafield: { value: configurationKey } }
+        ? {
+            ...createdVariant,
+            metafield: { value: configurationKey },
+          }
         : undefined;
       if (!cartVariant) {
         return Response.json(
@@ -319,6 +392,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
 
+    await ensureRopeCartVariantUntracked(admin, source.product.id, cartVariant);
     await publishRopeCartVariant(admin, cartVariant.id);
 
     return Response.json(
