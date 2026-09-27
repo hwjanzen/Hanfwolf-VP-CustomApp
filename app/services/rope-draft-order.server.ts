@@ -5,6 +5,10 @@ export type RopeCut = {
   presentation: "Ring" | "Haspel";
 };
 
+export function isRopeProductType(productType: string) {
+  return productType.trim().toLowerCase().startsWith("spezialseil");
+}
+
 function parseScaledDecimal(value: string, decimals: number, label: string) {
   const normalized = value.trim().replace(",", ".");
   const match = normalized.match(new RegExp(`^(\\d+)(?:\\.(\\d{1,${decimals}}))?$`));

@@ -4,6 +4,7 @@ import { authenticate } from "../shopify.server";
 import {
   calculateRopeUnitPrice,
   createRopeCartConfigurationKey,
+  isRopeProductType,
   normalizeRopeCuts,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
@@ -72,6 +73,73 @@ async function findRopeCartVariant(
   );
 }
 
+async function publishRopeCartVariant(admin: unknown, variantId: string) {
+  const publicationsResult = await adminGraphql<{
+    publications: {
+      nodes: Array<{ id: string; catalog: { title: string } | null }>;
+    };
+  }>(
+    admin,
+    `#graphql
+    query RopeCartOnlineStorePublication {
+      publications(first: 20, catalogType: APP) {
+        nodes {
+          id
+          catalog {
+            title
+          }
+        }
+      }
+    }`,
+  );
+
+  if (!publicationsResult.ok) {
+    throw new Error(`Online-Store-Publikation konnte nicht geladen werden: ${publicationsResult.errors.join(" | ")}`);
+  }
+
+  const publication = publicationsResult.data.publications.nodes.find(
+    (node) => node.catalog?.title === "Online Store",
+  );
+  if (!publication) {
+    throw new Error("Shopify-Publikation 'Online Store' wurde nicht gefunden.");
+  }
+
+  const publishResult = await adminGraphql<{
+    publishablePublish: {
+      userErrors: Array<{ field: string[] | null; message: string }>;
+    };
+  }>(
+    admin,
+    `#graphql
+    mutation PublishRopeCartVariant($id: ID!, $input: [PublicationInput!]!) {
+      publishablePublish(id: $id, input: $input) {
+        publishable {
+          ... on ProductVariant {
+            id
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`,
+    {
+      id: variantId,
+      input: [{ publicationId: publication.id }],
+    },
+  );
+
+  if (!publishResult.ok) {
+    throw new Error(`Zuschnitt-Variante konnte nicht veröffentlicht werden: ${publishResult.errors.join(" | ")}`);
+  }
+
+  const userErrors = publishResult.data.publishablePublish.userErrors;
+  if (userErrors.length > 0) {
+    throw new Error(`Zuschnitt-Variante konnte nicht veröffentlicht werden: ${userErrors.map((error) => error.message).join("; ")}`);
+  }
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const { admin, session } = await authenticate.public.appProxy(request);
@@ -134,7 +202,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const source = sourceResult.data.productVariant;
-    if (!source || source.product.productType.trim().toLowerCase() !== "spezialseile") {
+    if (!source || !isRopeProductType(source.product.productType)) {
       return Response.json(
         { ok: false, error: "Die ausgewaehlte Variante ist kein Spezialseil." },
         { status: 400 },
@@ -241,6 +309,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       }
     }
+
+    await publishRopeCartVariant(admin, cartVariant.id);
 
     return Response.json(
       {

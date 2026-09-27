@@ -5,11 +5,18 @@ import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  isRopeProductType,
   normalizeRopeCuts,
   parseRopeCartConfigurationKey,
 } from "./rope-draft-order.server";
 
 describe("rope draft order pricing", () => {
+  it("recognizes singular and plural specialty-rope product types", () => {
+    expect(isRopeProductType("Spezialseil")).toBe(true);
+    expect(isRopeProductType("Spezialseile")).toBe(true);
+    expect(isRopeProductType("Anschlagkette")).toBe(false);
+  });
+
   it("rounds each configured rope up to full cents", () => {
     expect(calculateRopeUnitPrice("2.90", "12")).toBe("34.80");
     expect(calculateRopeUnitPrice("2.90", "1,3")).toBe("3.77");

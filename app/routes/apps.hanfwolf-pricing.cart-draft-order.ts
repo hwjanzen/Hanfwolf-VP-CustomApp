@@ -5,6 +5,7 @@ import {
   calculateRopeShippingPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  isRopeProductType,
   parseRopeCartConfigurationKey,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
@@ -199,7 +200,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const configuration = ropeConfigurations.get(cartVariant.id);
 
       if (!configuration) {
-        if (cartVariant.product.productType.trim().toLowerCase() === "spezialseile") {
+        if (isRopeProductType(cartVariant.product.productType)) {
           return Response.json(
             { ok: false, error: "Spezialseile muessen ueber den Zuschnitt-Konfigurator in den Warenkorb gelegt werden." },
             { status: 400 },
@@ -224,7 +225,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { status: 400 },
         );
       }
-      if (originalVariant.product.productType.trim().toLowerCase() !== "spezialseile") {
+      if (!isRopeProductType(originalVariant.product.productType)) {
         return Response.json(
           { ok: false, error: "Die Originalvariante des Zuschnitts ist kein Spezialseil." },
           { status: 400 },
