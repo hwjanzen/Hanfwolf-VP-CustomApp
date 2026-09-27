@@ -48,6 +48,7 @@ type RopeProductNode = {
       sku: string | null;
       taxable: boolean;
       ropeConfiguration: { value: string } | null;
+      isDefaultConfiguration: { value: string } | null;
     }>;
   };
 };
@@ -156,6 +157,9 @@ async function loadRopeProducts(admin: unknown, ids: string[]) {
               sku
               taxable
               ropeConfiguration: metafield(namespace: "hanfwolf", key: "rope_configuration") {
+                value
+              }
+              isDefaultConfiguration: metafield(namespace: "$app", key: "is_default_configuration") {
                 value
               }
             }
@@ -337,11 +341,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         totalWeightKilograms += Number((unitWeightKilograms * item.quantity).toFixed(6));
 
         const masterVariant = product.variants.nodes.find(
-          (variant) => !variant.ropeConfiguration?.value,
+          (variant) => variant.isDefaultConfiguration?.value === "true",
         );
         if (!masterVariant) {
           return Response.json(
-            { ok: false, error: `Fuer ${product.title} wurde keine unveraenderte Stammdaten-Variante gefunden.` },
+            { ok: false, error: `Fuer ${product.title} wurde keine Variante mit is_default_configuration gefunden.` },
             { status: 400 },
           );
         }

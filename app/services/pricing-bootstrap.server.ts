@@ -2,6 +2,8 @@ import { adminGraphql } from "./shopify-graphql.server";
 
 const PRICE_LIST_HEADER_TYPE = "price_list_header";
 const PRICE_LIST_LINE_TYPE = "price_list_line";
+const ROPE_DEFAULT_CONFIGURATION_KEY = "is_default_configuration";
+const ROPE_DEFAULT_CONFIGURATION_NAMESPACE = "$app";
 
 type UserError = {
   field?: string[];
@@ -15,6 +17,7 @@ export type BootstrapResult = {
   headerDefinition: BootstrapStatus;
   lineDefinition: BootstrapStatus;
   companyMetafieldDefinition: BootstrapStatus;
+  ropeDefaultConfigurationMetafield: BootstrapStatus;
 };
 
 type EnsureDefinitionResult = {
@@ -319,6 +322,103 @@ async function ensureCompanyPriceListMetafieldDefinition(
   return "created";
 }
 
+export async function ensureRopeDefaultConfigurationMetafieldDefinition(
+  admin: any,
+): Promise<BootstrapStatus> {
+  const existingResult = await adminGraphql<{
+    metafieldDefinitions: {
+      nodes: Array<{ id: string; type: { name: string } }>;
+    };
+  }>(
+    admin,
+    `#graphql
+    query BootstrapRopeDefaultConfigurationMetafieldDefinition {
+      metafieldDefinitions(
+        first: 1
+        ownerType: PRODUCTVARIANT
+        namespace: "$app"
+        key: "is_default_configuration"
+      ) {
+        nodes {
+          id
+          type {
+            name
+          }
+        }
+      }
+    }`,
+  );
+
+  if (!existingResult.ok) {
+    throw new Error(
+      `Failed to read variant metafield definition $app.${ROPE_DEFAULT_CONFIGURATION_KEY}: ${existingResult.errors.join(" | ")}`,
+    );
+  }
+
+  const existing = existingResult.data.metafieldDefinitions.nodes[0];
+  if (existing) {
+    if (existing.type.name !== "boolean") {
+      throw new Error(
+        `Variant metafield $app.${ROPE_DEFAULT_CONFIGURATION_KEY} exists with type ${existing.type.name}; expected boolean.`,
+      );
+    }
+    return "exists";
+  }
+
+  const createResult = await adminGraphql<{
+    metafieldDefinitionCreate: {
+      createdDefinition: { id: string } | null;
+      userErrors: UserError[];
+    };
+  }>(
+    admin,
+    `#graphql
+    mutation BootstrapCreateRopeDefaultConfigurationMetafield($definition: MetafieldDefinitionInput!) {
+      metafieldDefinitionCreate(definition: $definition) {
+        createdDefinition {
+          id
+        }
+        userErrors {
+          field
+          message
+          code
+        }
+      }
+    }`,
+    {
+      definition: {
+        name: "Default rope configuration",
+        namespace: ROPE_DEFAULT_CONFIGURATION_NAMESPACE,
+        key: ROPE_DEFAULT_CONFIGURATION_KEY,
+        ownerType: "PRODUCTVARIANT",
+        type: "boolean",
+        access: {
+          admin: "MERCHANT_READ_WRITE",
+        },
+      },
+    },
+  );
+
+  if (!createResult.ok) {
+    throw new Error(
+      `Failed to create variant metafield definition $app.${ROPE_DEFAULT_CONFIGURATION_KEY}: ${createResult.errors.join(" | ")}`,
+    );
+  }
+
+  assertNoUserErrors(
+    createResult.data.metafieldDefinitionCreate.userErrors,
+    `Failed to create variant metafield definition $app.${ROPE_DEFAULT_CONFIGURATION_KEY}`,
+  );
+
+  if (!createResult.data.metafieldDefinitionCreate.createdDefinition?.id) {
+    throw new Error(
+      `Create variant metafield definition $app.${ROPE_DEFAULT_CONFIGURATION_KEY} returned no id.`,
+    );
+  }
+
+  return "created";
+}
+
 export async function ensurePricingBootstrap(admin: any): Promise<BootstrapResult> {
   const headerDefinition = await ensurePriceListHeaderDefinition(admin);
   const lineDefinition = await ensurePriceListLineDefinition(admin, headerDefinition.id);
@@ -326,10 +426,13 @@ export async function ensurePricingBootstrap(admin: any): Promise<BootstrapResul
     admin,
     headerDefinition.id,
   );
+  const ropeDefaultConfigurationMetafield =
+    await ensureRopeDefaultConfigurationMetafieldDefinition(admin);
 
   return {
     headerDefinition: headerDefinition.status,
     lineDefinition,
     companyMetafieldDefinition,
+    ropeDefaultConfigurationMetafield,
   };
 }

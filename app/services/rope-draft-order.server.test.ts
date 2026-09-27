@@ -8,6 +8,7 @@ import {
   isRopeProductType,
   normalizeRopeCuts,
   parseRopeCartConfigurationKey,
+  selectRopeMasterVariant,
 } from "./rope-draft-order.server";
 
 describe("rope draft order pricing", () => {
@@ -15,6 +16,58 @@ describe("rope draft order pricing", () => {
     expect(isRopeProductType("Spezialseil")).toBe(true);
     expect(isRopeProductType("Spezialseile")).toBe(true);
     expect(isRopeProductType("Anschlagkette")).toBe(false);
+  });
+
+  it("uses the explicitly marked master variant when present", () => {
+    const master = {
+      id: "gid://shopify/ProductVariant/1",
+      sku: "METER-1M",
+      ropeConfiguration: null,
+      isDefaultConfiguration: { value: "true" },
+    };
+    const generated = {
+      id: "gid://shopify/ProductVariant/2",
+      sku: "HW-RC-123",
+      ropeConfiguration: { value: "v2|..." },
+      isDefaultConfiguration: null,
+    };
+
+    expect(selectRopeMasterVariant([master, generated])).toEqual({
+      ok: true,
+      variant: master,
+      needsMarking: false,
+    });
+  });
+
+  it("marks a sole non-app variant as master and rejects ambiguous candidates", () => {
+    const master = {
+      id: "gid://shopify/ProductVariant/1",
+      sku: null,
+      ropeConfiguration: null,
+      isDefaultConfiguration: null,
+    };
+    const generated = {
+      id: "gid://shopify/ProductVariant/2",
+      sku: "HW-RC-123",
+      ropeConfiguration: { value: "v2|..." },
+      isDefaultConfiguration: null,
+    };
+
+    expect(selectRopeMasterVariant([master, generated])).toEqual({
+      ok: true,
+      variant: master,
+      needsMarking: true,
+    });
+    expect(selectRopeMasterVariant([master, { ...master, id: "gid://shopify/ProductVariant/3" }])).toEqual({
+      ok: false,
+      reason: "missing_or_ambiguous",
+    });
+    expect(
+      selectRopeMasterVariant([
+        { ...master, isDefaultConfiguration: { value: "true" } },
+        { ...master, id: "gid://shopify/ProductVariant/4", isDefaultConfiguration: { value: "true" } },
+      ]),
+    ).toEqual({ ok: false, reason: "multiple_marked" });
   });
 
   it("rounds each configured rope up to full cents", () => {

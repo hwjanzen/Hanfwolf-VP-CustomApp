@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
+import { ensureRopeDefaultConfigurationMetafieldDefinition } from "../services/pricing-bootstrap.server";
 import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   createRopeCartConfigurationKey,
   isRopeProductType,
   normalizeRopeProductCut,
+  selectRopeMasterVariant,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
 
@@ -17,6 +19,7 @@ type SourceVariant = {
   taxable: boolean;
   selectedOptions: Array<{ name: string; value: string }>;
   ropeConfiguration: { value: string } | null;
+  isDefaultConfiguration: { value: string } | null;
   inventoryItem: {
     measurement: {
       weight: { value: number; unit: string } | null;
@@ -264,6 +267,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return Response.json({ ok: false, error: "App-Proxy-Sitzung fehlt." }, { status: 401 });
     }
 
+    await ensureRopeDefaultConfigurationMetafieldDefinition(admin);
+
     let cut;
     try {
       const body = await request.json();
@@ -305,6 +310,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   ropeConfiguration: metafield(namespace: "hanfwolf", key: "rope_configuration") {
                     value
                   }
+                  isDefaultConfiguration: metafield(namespace: "$app", key: "is_default_configuration") {
+                    value
+                  }
                   inventoryItem {
                     measurement {
                       weight {
@@ -340,20 +348,67 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           );
         }
 
-        const source =
-          sourceProduct.variants.nodes.find(
-            (variant) =>
-              !variant.ropeConfiguration?.value &&
-              !variant.sku?.startsWith("HW-RC-"),
-          ) ||
-          sourceProduct.variants.nodes.find(
-            (variant) => !variant.sku?.startsWith("HW-RC-"),
-          );
-        if (!source) {
+        const masterSelection = selectRopeMasterVariant(sourceProduct.variants.nodes);
+        if (!masterSelection.ok && masterSelection.reason === "multiple_marked") {
           return Response.json(
-            { ok: false, error: `Fuer ${sourceProduct.title} wurde keine Stammdaten-Variante ohne die App-SKU HW-RC- gefunden.` },
+            {
+              ok: false,
+              error: `Fuer ${sourceProduct.title} sind mehrere Varianten als is_default_configuration markiert. Es darf genau eine Stammdaten-Variante geben.`,
+            },
             { status: 400 },
           );
+        }
+        if (!masterSelection.ok) {
+          return Response.json(
+            {
+              ok: false,
+              error: `Fuer ${sourceProduct.title} fehlt eine Stammdaten-Variante oder es gibt mehrere unmarkierte Kandidaten. Markiere genau eine Variante mit is_default_configuration.`,
+            },
+            { status: 400 },
+          );
+        }
+
+        const source = masterSelection.variant;
+        if (masterSelection.needsMarking) {
+          const markerResult = await adminGraphql<{
+            metafieldsSet: {
+              userErrors: Array<{ field: string[] | null; message: string }>;
+            };
+          }>(
+            admin,
+            `#graphql
+            mutation MarkRopeMasterVariant($metafields: [MetafieldsSetInput!]!) {
+              metafieldsSet(metafields: $metafields) {
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`,
+            {
+              metafields: [
+                {
+                  ownerId: source.id,
+                  key: "is_default_configuration",
+                  type: "boolean",
+                  value: "true",
+                },
+              ],
+            },
+          );
+          if (!markerResult.ok) {
+            return Response.json(
+              { ok: false, error: "Die Stammdaten-Variante konnte nicht markiert werden.", details: markerResult.errors },
+              { headers: { "Cache-Control": "no-store" } },
+            );
+          }
+          const markerErrors = markerResult.data.metafieldsSet.userErrors;
+          if (markerErrors.length > 0) {
+            return Response.json(
+              { ok: false, error: "Die Stammdaten-Variante konnte nicht markiert werden.", details: markerErrors.map((error) => error.message) },
+              { headers: { "Cache-Control": "no-store" } },
+            );
+          }
         }
         if (source.selectedOptions.length === 0 || source.selectedOptions.length !== sourceProduct.options.length) {
           return Response.json(
@@ -421,7 +476,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             admin,
             `#graphql
             mutation CreateRopeCartVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-              productVariantsBulkCreate(productId: $productId, variants: $variants) {
+              productVariantsBulkCreate(
+                productId: $productId
+                variants: $variants
+                strategy: PRESERVE_STANDALONE_VARIANT
+              ) {
                 productVariants {
                   id
                   sku

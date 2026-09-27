@@ -31,8 +31,44 @@ export type RopeCartConfiguration =
       unitPrice: string;
     };
 
+type RopeMasterVariantCandidate = {
+  id: string;
+  sku: string | null;
+  ropeConfiguration: { value: string } | null;
+  isDefaultConfiguration: { value: string } | null;
+};
+
+export type RopeMasterVariantSelection<T extends RopeMasterVariantCandidate> =
+  | { ok: true; variant: T; needsMarking: boolean }
+  | { ok: false; reason: "multiple_marked" | "missing_or_ambiguous" };
+
 export function isRopeProductType(productType: string) {
   return productType.trim().toLowerCase().startsWith("spezialseil");
+}
+
+export function selectRopeMasterVariant<T extends RopeMasterVariantCandidate>(
+  variants: T[],
+): RopeMasterVariantSelection<T> {
+  const markedVariants = variants.filter(
+    (variant) => variant.isDefaultConfiguration?.value === "true",
+  );
+  if (markedVariants.length > 1) {
+    return { ok: false, reason: "multiple_marked" };
+  }
+  if (markedVariants.length === 1) {
+    return { ok: true, variant: markedVariants[0], needsMarking: false };
+  }
+
+  const candidates = variants.filter(
+    (variant) =>
+      !variant.ropeConfiguration?.value &&
+      !variant.sku?.startsWith("HW-RC-"),
+  );
+  if (candidates.length !== 1) {
+    return { ok: false, reason: "missing_or_ambiguous" };
+  }
+
+  return { ok: true, variant: candidates[0], needsMarking: true };
 }
 
 function parseScaledDecimal(value: string, decimals: number, label: string) {
