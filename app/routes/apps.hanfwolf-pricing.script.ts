@@ -185,7 +185,7 @@ const scriptBody = String.raw`(function () {
       quantity: cartVariant.quantity,
       properties: cartVariant.properties,
     };
-    var retryDelays = [250, 700];
+    var retryDelays = [500, 1500, 3000];
     var lastError = null;
 
     for (var attempt = 0; attempt <= retryDelays.length; attempt += 1) {
@@ -224,7 +224,7 @@ const scriptBody = String.raw`(function () {
 
       var mayBeTemporarilyUnavailable =
         cartResponse.status === 422 &&
-        /unavailable|not available|sold out|inventory/i.test(description);
+        /cannot find variant|variant not found|unavailable|not available|sold out|inventory/i.test(description);
       if (!mayBeTemporarilyUnavailable || attempt === retryDelays.length) {
         throw lastError;
       }
