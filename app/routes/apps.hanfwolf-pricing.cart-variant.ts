@@ -82,7 +82,7 @@ async function publishRopeCartVariant(admin: unknown, variantId: string) {
     admin,
     `#graphql
     query RopeCartOnlineStorePublication {
-      publications(first: 20, catalogType: APP) {
+      publications(first: 20) {
         nodes {
           id
           catalog {
@@ -97,11 +97,17 @@ async function publishRopeCartVariant(admin: unknown, variantId: string) {
     throw new Error(`Online-Store-Publikation konnte nicht geladen werden: ${publicationsResult.errors.join(" | ")}`);
   }
 
-  const publication = publicationsResult.data.publications.nodes.find(
-    (node) => node.catalog?.title === "Online Store",
+  const availablePublications = publicationsResult.data.publications.nodes;
+  const publication = availablePublications.find(
+    (node) => node.catalog?.title.trim().toLowerCase() === "online store",
   );
   if (!publication) {
-    throw new Error("Shopify-Publikation 'Online Store' wurde nicht gefunden.");
+    const titles = availablePublications
+      .map((node) => node.catalog?.title)
+      .filter((title): title is string => Boolean(title));
+    throw new Error(
+      `Shopify-Publikation 'Online Store' wurde nicht gefunden. Verfuegbare Kanaele: ${titles.join(", ") || "keine"}.`,
+    );
   }
 
   const publishResult = await adminGraphql<{
