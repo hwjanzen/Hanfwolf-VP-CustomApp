@@ -99,7 +99,10 @@ async function publishRopeCartVariant(admin: unknown, variantId: string) {
 
   const availablePublications = publicationsResult.data.publications.nodes;
   const publication = availablePublications.find(
-    (node) => node.catalog?.title.trim().toLowerCase() === "online store",
+    (node) => {
+      const title = node.catalog?.title.trim().toLowerCase() || "";
+      return title === "online store" || title.endsWith("for online store");
+    },
   );
   if (!publication) {
     const titles = availablePublications
