@@ -185,7 +185,8 @@ const scriptBody = String.raw`(function () {
       quantity: cartVariant.quantity,
       properties: cartVariant.properties,
     };
-    var retryDelays = [500, 1500, 3000];
+    // New variants reach the storefront cart a few seconds after the Admin API reports them.
+    var retryDelays = [1000, 2000, 3000, 5000, 8000, 10000];
     var lastError = null;
 
     for (var attempt = 0; attempt <= retryDelays.length; attempt += 1) {
