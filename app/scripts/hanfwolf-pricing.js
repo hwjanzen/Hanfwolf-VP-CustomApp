@@ -390,10 +390,10 @@
 
   function removeProductBadge(target) {
     var root = target || document;
-    var badge = root.querySelector("[data-hanfwolf-custom-price-badge]");
-    if (badge) {
+    var badges = root.querySelectorAll("[data-hanfwolf-custom-price-badge]");
+    badges.forEach(function (badge) {
       badge.remove();
-    }
+    });
   }
 
   function renderMissingPriceMessage(target, payload, contextKey) {
@@ -526,6 +526,11 @@
     var currentStateKey = null;
 
     async function refreshPrice(force) {
+      if (document.querySelector("[data-rope-configurator]")) {
+        removeProductBadge(document);
+        return;
+      }
+
       var latestTarget = getProductPageTarget();
       if (latestTarget && latestTarget !== target) {
         removeProductBadge(target);
@@ -662,7 +667,8 @@
   }
 
   var path = window.location.pathname;
-  if (!disablePriceFeature) {
+  var hasRopeConfigurator = Boolean(document.querySelector("[data-rope-configurator]"));
+  if (!disablePriceFeature && !hasRopeConfigurator) {
     if (/\/products\//i.test(path)) {
       handleProductPage();
     }

@@ -21,6 +21,10 @@
     return;
   }
 
+  document.querySelectorAll("[data-hanfwolf-custom-price-badge]").forEach(function (badge) {
+    badge.remove();
+  });
+
   submitButton.disabled = true;
 
   function getItems() {
