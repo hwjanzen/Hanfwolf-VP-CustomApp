@@ -135,6 +135,9 @@
         <button class="button button--secondary" type="button" data-add-rope-cut>
           Weiteren Zuschnitt hinzufügen
         </button>
+        <button class="button button--secondary" type="button" data-prepare-rope>
+          Konfiguration korrekt?
+        </button>
         <button class="button" type="submit" data-rope-submit>
           In den Warenkorb
         </button>
@@ -205,8 +208,27 @@
     const cutsContainer = form.querySelector('[data-rope-cuts]');
     const template = section.querySelector('[data-rope-cut-template]');
     const errorElement = form.querySelector('[data-rope-error]');
+    const prepareButton = form.querySelector('[data-prepare-rope]');
     const submitButton = form.querySelector('[data-rope-submit]');
     let nextIndex = 0;
+
+    submitButton.disabled = true;
+
+    function getItems() {
+      const productId = 'gid://shopify/Product/{{ product.id }}';
+      return Array.from(cutsContainer.querySelectorAll('.rope-cut')).map((cut) => ({
+        productId,
+        quantity: Number(cut.querySelector('[data-rope-quantity]').value),
+        lengthMeters: cut.querySelector('[data-rope-length]').value,
+        presentation: cut.querySelector('[data-rope-presentation]:checked').value,
+      }));
+    }
+
+    function markConfigurationChanged() {
+      submitButton.disabled = true;
+      prepareButton.disabled = false;
+      prepareButton.textContent = 'Konfiguration korrekt?';
+    }
 
     function addCut() {
       const fragment = template.content.cloneNode(true);
@@ -215,6 +237,7 @@
       const quantity = cut.querySelector('[data-rope-quantity]');
       const length = cut.querySelector('[data-rope-length]');
       const radios = cut.querySelectorAll('[data-rope-presentation]');
+      let preparationTimer;
 
       quantity.id = `RopeQuantity-{{ section.id }}-${index}`;
       length.id = `RopeLength-{{ section.id }}-${index}`;
@@ -227,10 +250,14 @@
       cut.querySelector('[data-remove-rope-cut]').addEventListener('click', () => {
         cut.remove();
         updateRemoveButtons();
+        markConfigurationChanged();
       });
+      length.addEventListener('input', markConfigurationChanged);
+      radios.forEach((radio) => radio.addEventListener('change', markConfigurationChanged));
 
       cutsContainer.appendChild(fragment);
       updateRemoveButtons();
+      markConfigurationChanged();
     }
 
     function updateRemoveButtons() {
@@ -247,18 +274,37 @@
 
     form.querySelector('[data-add-rope-cut]').addEventListener('click', addCut);
 
+    prepareButton.addEventListener('click', async () => {
+      showError('');
+      if (!form.reportValidity()) return;
+
+      const prepareRopeCut = window.HanfwolfPricing?.prepareRopeCut;
+      if (!prepareRopeCut) {
+        showError('Der Hanfwolf-Warenkorbservice wurde nicht geladen.');
+        return;
+      }
+
+      prepareButton.disabled = true;
+      submitButton.disabled = true;
+      prepareButton.textContent = 'Varianten werden vorbereitet ...';
+
+      try {
+        await Promise.all(getItems().map((item) => prepareRopeCut(item)));
+        prepareButton.textContent = 'Konfiguration bestätigt';
+        submitButton.disabled = false;
+      } catch (error) {
+        prepareButton.disabled = false;
+        prepareButton.textContent = 'Konfiguration korrekt?';
+        showError(error instanceof Error ? error.message : 'Die Varianten konnten nicht vorbereitet werden.');
+      }
+    });
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       showError('');
       if (!form.reportValidity()) return;
 
-      const productId = 'gid://shopify/Product/{{ product.id }}';
-      const items = Array.from(cutsContainer.querySelectorAll('.rope-cut')).map((cut) => ({
-        productId,
-        quantity: Number(cut.querySelector('[data-rope-quantity]').value),
-        lengthMeters: cut.querySelector('[data-rope-length]').value,
-        presentation: cut.querySelector('[data-rope-presentation]:checked').value,
-      }));
+      const items = getItems();
 
       submitButton.disabled = true;
       submitButton.setAttribute('aria-busy', 'true');

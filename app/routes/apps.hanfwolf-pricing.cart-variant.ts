@@ -195,43 +195,48 @@ async function ensureRopeCartVariantInventorySettings(
   }
 }
 
-async function publishRopeCartVariant(admin: unknown, variantId: string) {
+async function publishRopeCartVariant(
+  admin: unknown,
+  productId: string,
+  variantId: string,
+) {
   const publicationsResult = await adminGraphql<{
-    publications: {
-      nodes: Array<{ id: string; catalog: { title: string } | null }>;
-    };
+    product: {
+      resourcePublicationsV2: {
+        nodes: Array<{
+          publication: { id: string; name: string; catalog: { title: string } | null };
+        }>;
+      };
+    } | null;
   }>(
     admin,
     `#graphql
-    query RopeCartOnlineStorePublication {
-      publications(first: 20) {
-        nodes {
-          id
-          catalog {
-            title
+    query RopeMasterProductPublications($productId: ID!) {
+      product(id: $productId) {
+        resourcePublicationsV2(first: 25) {
+          nodes {
+            publication {
+              id
+              name
+              catalog {
+                title
+              }
+            }
           }
         }
       }
     }`,
+    { productId },
   );
 
   if (!publicationsResult.ok) {
     throw new Error(`Online-Store-Publikation konnte nicht geladen werden: ${publicationsResult.errors.join(" | ")}`);
   }
 
-  const availablePublications = publicationsResult.data.publications.nodes;
-  const publication = availablePublications.find(
-    (node) => {
-      const title = node.catalog?.title.trim().toLowerCase() || "";
-      return title === "online store" || title.endsWith("for online store");
-    },
-  );
-  if (!publication) {
-    const titles = availablePublications
-      .map((node) => node.catalog?.title)
-      .filter((title): title is string => Boolean(title));
+  const productPublications = publicationsResult.data.product?.resourcePublicationsV2.nodes ?? [];
+  if (productPublications.length === 0) {
     throw new Error(
-      `Shopify-Publikation 'Online Store' wurde nicht gefunden. Verfuegbare Kanaele: ${titles.join(", ") || "keine"}.`,
+      "Das Hauptprodukt ist in keinem Verkaufskanal veröffentlicht.",
     );
   }
 
@@ -257,7 +262,9 @@ async function publishRopeCartVariant(admin: unknown, variantId: string) {
     }`,
     {
       id: variantId,
-      input: [{ publicationId: publication.id }],
+      input: productPublications.map(({ publication }) => ({
+        publicationId: publication.id,
+      })),
     },
   );
 
@@ -270,7 +277,13 @@ async function publishRopeCartVariant(admin: unknown, variantId: string) {
     throw new Error(`Zuschnitt-Variante konnte nicht veröffentlicht werden: ${userErrors.map((error) => error.message).join("; ")}`);
   }
 
-  return publication.id;
+  const onlineStorePublication = productPublications.find(({ publication }) => {
+    const title = publication.catalog?.title.trim().toLowerCase() || "";
+    const name = publication.name.trim().toLowerCase();
+    return title === "online store" || title.endsWith("for online store") || name === "online store";
+  });
+
+  return (onlineStorePublication ?? productPublications[0]).publication.id;
 }
 
 async function assertRopeCartVariantAvailable(
@@ -638,7 +651,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           value: configuredWeight,
           unit: sourceWeight.unit,
         });
-        const onlineStorePublicationId = await publishRopeCartVariant(admin, cartVariant.id);
+        const onlineStorePublicationId = await publishRopeCartVariant(
+          admin,
+          sourceProduct.id,
+          cartVariant.id,
+        );
         await assertRopeCartVariantAvailable(admin, cartVariant.id, onlineStorePublicationId);
 
         return Response.json(

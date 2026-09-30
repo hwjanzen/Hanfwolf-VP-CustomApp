@@ -169,8 +169,8 @@ const scriptBody = String.raw`(function () {
     return payload;
   }
 
-  async function addRopeCutToCart(item) {
-    var cartVariant = await requestJson(buildProxyActionUrl("cart-variant"), {
+  async function prepareRopeCut(item) {
+    return requestJson(buildProxyActionUrl("cart-variant"), {
       method: "POST",
       credentials: "same-origin",
       headers: {
@@ -179,87 +179,46 @@ const scriptBody = String.raw`(function () {
       },
       body: JSON.stringify({ item: item }),
     });
+  }
+
+  async function addRopeCutToCart(item) {
+    var cartVariant = await prepareRopeCut(item);
 
     var addPayload = {
       id: cartVariant.cartVariantNumericId,
       quantity: cartVariant.quantity,
       properties: cartVariant.properties,
     };
-    // New variants reach the storefront cart a few seconds after the Admin API reports them.
-    var retryDelays = [1000, 2000, 3000, 5000, 8000, 10000];
-    var lastError = null;
+    var cartResponse = await fetch(getStoreRoot() + "cart/add.js", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(addPayload),
+    });
+    var responseText = await cartResponse.text();
+    var cartPayload = null;
 
-    for (var attempt = 0; attempt <= retryDelays.length; attempt += 1) {
-      var cartResponse = await fetch(getStoreRoot() + "cart/add.js", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(addPayload),
-      });
-      var responseText = await cartResponse.text();
-      var cartPayload = null;
-
-      try {
-        cartPayload = responseText ? JSON.parse(responseText) : null;
-      } catch (error) {
-        cartPayload = null;
-      }
-
-      if (cartResponse.ok) {
-        return cartPayload;
-      }
-
-      var description =
-        (cartPayload && (cartPayload.description || cartPayload.message)) ||
-        responseText.trim().slice(0, 180) ||
-        "unbekannter Shopify-Fehler";
-      lastError = new Error(
-        "Shopify konnte den Zuschnitt nicht hinzufuegen (HTTP " +
-          cartResponse.status +
-          "): " +
-          description,
-      );
-
-      var retryAfterHeader = cartResponse.headers.get("Retry-After");
-      var retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : Number.NaN;
-      if (cartResponse.status === 429) {
-        if (
-          attempt < retryDelays.length &&
-          Number.isFinite(retryAfterSeconds) &&
-          retryAfterSeconds >= 0 &&
-          retryAfterSeconds <= 15
-        ) {
-          await new Promise(function (resolve) {
-            window.setTimeout(
-              resolve,
-              Math.max(retryDelays[attempt], retryAfterSeconds * 1000),
-            );
-          });
-          continue;
-        }
-
-        var waitMessage = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 15
-          ? " Shopify bittet, " + Math.ceil(retryAfterSeconds) + " Sekunden zu warten."
-          : " Shopify bittet, es in einigen Minuten erneut zu versuchen.";
-        throw new Error(lastError.message + waitMessage);
-      }
-
-      var mayBeTemporarilyUnavailable =
-        cartResponse.status === 422 &&
-        /cannot find variant|variant not found|unavailable|not available|sold out|inventory/i.test(description);
-      if (!mayBeTemporarilyUnavailable || attempt === retryDelays.length) {
-        throw lastError;
-      }
-
-      await new Promise(function (resolve) {
-        window.setTimeout(resolve, retryDelays[attempt]);
-      });
+    try {
+      cartPayload = responseText ? JSON.parse(responseText) : null;
+    } catch (error) {
+      cartPayload = null;
     }
 
-    throw lastError || new Error("Der Zuschnitt konnte nicht in den Warenkorb gelegt werden.");
+    if (cartResponse.ok) return cartPayload;
+
+    var description =
+      (cartPayload && (cartPayload.description || cartPayload.message)) ||
+      responseText.trim().slice(0, 180) ||
+      "unbekannter Shopify-Fehler";
+    throw new Error(
+      "Shopify konnte den Zuschnitt nicht hinzufuegen (HTTP " +
+        cartResponse.status +
+        "): " +
+        description,
+    );
   }
 
   async function finalizeCart() {
@@ -721,6 +680,7 @@ const scriptBody = String.raw`(function () {
   bindCartCheckout();
 
   window.HanfwolfPricing = window.HanfwolfPricing || {};
+  window.HanfwolfPricing.prepareRopeCut = prepareRopeCut;
   window.HanfwolfPricing.addRopeCutToCart = addRopeCutToCart;
   window.HanfwolfPricing.finalizeCart = finalizeCart;
 })();`;
