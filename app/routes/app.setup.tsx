@@ -54,12 +54,31 @@ function formatScaledDecimal(value: number, decimals: number) {
 }
 
 function resolveMapping(
-  definitionId: string,
+  submittedValue: FormDataEntryValue | null,
   definitions: VariantMetafieldDefinition[],
+  label: string,
 ): MetafieldMapping | null {
-  if (!definitionId) return null;
-  const definition = definitions.find((candidate) => candidate.id === definitionId);
-  if (!definition) throw new Error("Ein ausgewaehltes Metafeld ist nicht mehr verfuegbar.");
+  const rawValue = typeof submittedValue === "string" ? submittedValue.trim() : "";
+  if (!rawValue) return null;
+
+  let value = rawValue;
+  try {
+    value = decodeURIComponent(rawValue);
+  } catch {
+    // Keep the original value when it is not URI encoded.
+  }
+
+  const definition = definitions.find(
+    (candidate) =>
+      candidate.id === value ||
+      `${candidate.namespace}.${candidate.key}` === value ||
+      `${candidate.namespace}:${candidate.key}` === value,
+  );
+  if (!definition) {
+    throw new Error(
+      `${label}: Das ausgewaehlte Metafeld ist nicht mehr verfuegbar. Bitte die Seite neu laden und erneut auswaehlen.`,
+    );
+  }
   return {
     definitionId: definition.id,
     namespace: definition.namespace,
@@ -67,16 +86,21 @@ function resolveMapping(
   };
 }
 
-function selectedMappingId(
+function mappingOptionValue(definition: VariantMetafieldDefinition) {
+  return `${definition.namespace}:${definition.key}`;
+}
+
+function selectedMappingValue(
   mapping: MetafieldMapping | null,
   definitions: VariantMetafieldDefinition[],
 ) {
   if (!mapping) return "";
-  return definitions.find(
+  const definition = definitions.find(
     (definition) =>
       definition.id === mapping.definitionId ||
       (definition.namespace === mapping.namespace && definition.key === mapping.key),
-  )?.id ?? "";
+  );
+  return definition ? mappingOptionValue(definition) : "";
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -167,16 +191,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       maxQuantity,
       shippingTiers,
       packageQuantityMetafield: resolveMapping(
-        String(formData.get("packageQuantityMetafieldDefinitionId") || ""),
+        formData.get("packageQuantityMetafieldDefinitionId"),
         variantDefinitions,
+        "Menge pro Verpackungseinheit",
       ),
       haspelSurchargeMetafield: resolveMapping(
-        String(formData.get("haspelSurchargeMetafieldDefinitionId") || ""),
+        formData.get("haspelSurchargeMetafieldDefinitionId"),
         surchargeDefinitions,
+        "Haspel-Aufpreis",
       ),
       ropeEligibilityMetafield: resolveMapping(
-        String(formData.get("ropeEligibilityMetafieldDefinitionId") || ""),
+        formData.get("ropeEligibilityMetafieldDefinitionId"),
         eligibilityDefinitions,
+        "Seilprodukt-Kennzeichnung",
       ),
     });
 
@@ -217,12 +244,12 @@ export default function RopeConfiguratorSetupPage() {
             <s-select
               label="Menge pro Verpackungseinheit"
               name="packageQuantityMetafieldDefinitionId"
-              value={selectedMappingId(config.packageQuantityMetafield, variantDefinitions)}
+              value={selectedMappingValue(config.packageQuantityMetafield, variantDefinitions)}
               disabled={variantDefinitions.length === 0}
             >
               <s-option value="">Nicht zugeordnet</s-option>
               {variantDefinitions.map((definition) => (
-                <s-option key={definition.id} value={definition.id}>
+                <s-option key={definition.id} value={mappingOptionValue(definition)}>
                   {definition.name} ({definition.namespace}.{definition.key})
                 </s-option>
               ))}
@@ -231,11 +258,11 @@ export default function RopeConfiguratorSetupPage() {
             <s-select
               label="Haspel-Aufpreis"
               name="haspelSurchargeMetafieldDefinitionId"
-              value={selectedMappingId(config.haspelSurchargeMetafield, surchargeDefinitions)}
+              value={selectedMappingValue(config.haspelSurchargeMetafield, surchargeDefinitions)}
             >
               <s-option value="">Nicht zugeordnet</s-option>
               {surchargeDefinitions.map((definition) => (
-                <s-option key={definition.id} value={definition.id}>
+                <s-option key={definition.id} value={mappingOptionValue(definition)}>
                   {definition.name} ({definition.namespace}.{definition.key})
                 </s-option>
               ))}
@@ -244,11 +271,11 @@ export default function RopeConfiguratorSetupPage() {
             <s-select
               label="Seilprodukt-Kennzeichnung"
               name="ropeEligibilityMetafieldDefinitionId"
-              value={selectedMappingId(config.ropeEligibilityMetafield, eligibilityDefinitions)}
+              value={selectedMappingValue(config.ropeEligibilityMetafield, eligibilityDefinitions)}
             >
               <s-option value="">Produkttyp Spezialseil verwenden</s-option>
               {eligibilityDefinitions.map((definition) => (
-                <s-option key={definition.id} value={definition.id}>
+                <s-option key={definition.id} value={mappingOptionValue(definition)}>
                   {definition.name} ({definition.namespace}.{definition.key})
                 </s-option>
               ))}
