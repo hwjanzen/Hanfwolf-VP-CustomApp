@@ -5,6 +5,7 @@ import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  isRopeProduct,
   isRopeProductType,
   normalizeRopeCuts,
   parseRopeCartConfigurationKey,
@@ -184,6 +185,16 @@ describe("rope draft order pricing", () => {
     expect(calculateRopeShippingPrice(200.0001)).toBe("150.00");
   });
 
+  it("uses configured shipping tiers", () => {
+    const tiers = [
+      { maxWeightGrams: 5_000, priceCents: 990 },
+      { maxWeightGrams: null, priceCents: 2_490 },
+    ];
+
+    expect(calculateRopeShippingPrice(5, tiers)).toBe("9.90");
+    expect(calculateRopeShippingPrice(5.001, tiers)).toBe("24.90");
+  });
+
   it("normalizes Shopify weight units to kilograms", () => {
     expect(convertWeightToKilograms(350, "GRAMS")).toBe(0.35);
     expect(convertWeightToKilograms(0.35, "KILOGRAMS")).toBe(0.35);
@@ -222,5 +233,31 @@ describe("rope draft order pricing", () => {
         },
       ]),
     ).toThrow("zwischen 0,5 und 500 m");
+  });
+
+  it("uses configured length and quantity limits", () => {
+    const limits = {
+      minLengthHundredths: 100,
+      maxLengthHundredths: 100_000,
+      minQuantity: 2,
+      maxQuantity: 20,
+    };
+
+    expect(
+      normalizeRopeCuts([
+        {
+          variantId: "gid://shopify/ProductVariant/123",
+          quantity: 2,
+          lengthMeters: "750",
+          presentation: "Ring",
+        },
+      ], limits)[0].lengthMeters,
+    ).toBe("750");
+  });
+
+  it("uses the eligibility metafield when it is mapped", () => {
+    expect(isRopeProduct("Other", { value: "true" }, true)).toBe(true);
+    expect(isRopeProduct("Spezialseil", { value: "false" }, true)).toBe(false);
+    expect(isRopeProduct("Spezialseil", null, false)).toBe(true);
   });
 });

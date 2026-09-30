@@ -2,11 +2,15 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { normalizeCustomerId, normalizeVariantId } from "../services/price-resolver.server";
 import {
+  getRopeConfiguratorConfig,
+  type RopeConfiguratorConfig,
+} from "../services/rope-configurator-setup.server";
+import {
   calculateRopeShippingPrice,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
-  isRopeProductType,
+  isRopeProduct,
   parseRopeCartConfigurationKey,
   type RopeCartConfiguration,
 } from "../services/rope-draft-order.server";
@@ -34,6 +38,7 @@ type VariantNode = {
     id: string;
     title: string;
     productType: string;
+    ropeEligibility: { value: string } | null;
   };
 };
 
@@ -42,6 +47,7 @@ type RopeProductNode = {
   title: string;
   productType: string;
   haspelSurcharge: { value: string } | null;
+  ropeEligibility: { value: string } | null;
   variants: {
     nodes: Array<{
       id: string;
@@ -87,13 +93,21 @@ function normalizeCartItems(value: unknown): CartItem[] {
   });
 }
 
-async function loadVariants(admin: unknown, ids: string[]) {
+async function loadVariants(
+  admin: unknown,
+  ids: string[],
+  config: RopeConfiguratorConfig,
+) {
   const result = await adminGraphql<{
     nodes: Array<VariantNode | null>;
   }>(
     admin,
     `#graphql
-    query RopeCartDraftOrderVariants($ids: [ID!]!) {
+    query RopeCartDraftOrderVariants(
+      $ids: [ID!]!
+      $eligibilityNamespace: String!
+      $eligibilityKey: String!
+    ) {
       nodes(ids: $ids) {
         ... on ProductVariant {
           id
@@ -116,11 +130,18 @@ async function loadVariants(admin: unknown, ids: string[]) {
             id
             title
             productType
+            ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
+              value
+            }
           }
         }
       }
     }`,
-    { ids },
+    {
+      ids,
+      eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
+      eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
+    },
   );
 
   if (!result.ok) {
@@ -134,7 +155,11 @@ async function loadVariants(admin: unknown, ids: string[]) {
   );
 }
 
-async function loadRopeProducts(admin: unknown, ids: string[]) {
+async function loadRopeProducts(
+  admin: unknown,
+  ids: string[],
+  config: RopeConfiguratorConfig,
+) {
   if (ids.length === 0) return new Map<string, RopeProductNode>();
 
   const result = await adminGraphql<{
@@ -142,13 +167,22 @@ async function loadRopeProducts(admin: unknown, ids: string[]) {
   }>(
     admin,
     `#graphql
-    query RopeCartDraftOrderProducts($ids: [ID!]!) {
+    query RopeCartDraftOrderProducts(
+      $ids: [ID!]!
+      $haspelNamespace: String!
+      $haspelKey: String!
+      $eligibilityNamespace: String!
+      $eligibilityKey: String!
+    ) {
       nodes(ids: $ids) {
         ... on Product {
           id
           title
           productType
-          haspelSurcharge: metafield(namespace: "custom", key: "haspel_surcharge") {
+          haspelSurcharge: metafield(namespace: $haspelNamespace, key: $haspelKey) {
+            value
+          }
+          ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
             value
           }
           variants(first: 250) {
@@ -167,7 +201,13 @@ async function loadRopeProducts(admin: unknown, ids: string[]) {
         }
       }
     }`,
-    { ids },
+    {
+      ids,
+      haspelNamespace: config.haspelSurchargeMetafield?.namespace ?? "$app",
+      haspelKey: config.haspelSurchargeMetafield?.key ?? "unconfigured_haspel_surcharge",
+      eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
+      eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
+    },
   );
 
   if (!result.ok) {
@@ -196,6 +236,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!admin || !session) {
       return Response.json({ ok: false, error: "App-Proxy-Sitzung fehlt." }, { status: 401 });
     }
+    const config = await getRopeConfiguratorConfig(session.shop);
 
     let cartItems: CartItem[];
     try {
@@ -211,6 +252,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cartVariants = await loadVariants(
       admin,
       [...new Set(cartItems.map((item) => item.variantId))],
+      config,
     );
     const ropeConfigurations = new Map<string, ReturnType<typeof parseRopeCartConfigurationKey>>();
 
@@ -227,7 +269,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       try {
         ropeConfigurations.set(
           variant.id,
-          parseRopeCartConfigurationKey(variant.ropeConfiguration.value),
+          parseRopeCartConfigurationKey(variant.ropeConfiguration.value, config),
         );
       } catch (error) {
         return Response.json(
@@ -245,8 +287,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .filter((configuration): configuration is Extract<RopeCartConfiguration, { version: "v2" }> => configuration.version === "v2")
       .map((configuration) => configuration.productId);
     const [originalVariants, ropeProducts] = await Promise.all([
-      loadVariants(admin, [...new Set(legacyVariantIds)]),
-      loadRopeProducts(admin, [...new Set(ropeProductIds)]),
+      loadVariants(admin, [...new Set(legacyVariantIds)], config),
+      loadRopeProducts(admin, [...new Set(ropeProductIds)], config),
     ]);
     const shopResult = await adminGraphql<{ shop: { currencyCode: string } }>(
       admin,
@@ -272,7 +314,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const configuration = ropeConfigurations.get(cartVariant.id);
 
       if (!configuration) {
-        if (isRopeProductType(cartVariant.product.productType)) {
+        if (isRopeProduct(
+          cartVariant.product.productType,
+          cartVariant.product.ropeEligibility,
+          Boolean(config.ropeEligibilityMetafield),
+        )) {
           return Response.json(
             { ok: false, error: "Spezialseile muessen ueber den Zuschnitt-Konfigurator in den Warenkorb gelegt werden." },
             { status: 400 },
@@ -290,9 +336,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         continue;
       }
 
+      if (item.quantity < config.minQuantity || item.quantity > config.maxQuantity) {
+        return Response.json(
+          {
+            ok: false,
+            error: `Die Seilmenge muss zwischen ${config.minQuantity} und ${config.maxQuantity} liegen.`,
+          },
+          { status: 400 },
+        );
+      }
+
       if (configuration.version === "v2") {
         const product = ropeProducts.get(configuration.productId);
-        if (!product || !isRopeProductType(product.productType)) {
+        if (
+          !product ||
+          !isRopeProduct(
+            product.productType,
+            product.ropeEligibility,
+            Boolean(config.ropeEligibilityMetafield),
+          )
+        ) {
           return Response.json(
             { ok: false, error: "Das Hauptprodukt des Seil-Zuschnitts wurde nicht gefunden oder ist kein Spezialseil." },
             { status: 400 },
@@ -318,10 +381,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           );
         }
 
+        if (presentation === "Haspel" && !config.haspelSurchargeMetafield) {
+          return Response.json(
+            { ok: false, error: "Im RopeConfigurator Setup fehlt die Zuordnung fuer den Haspel-Aufpreis." },
+            { status: 400 },
+          );
+        }
         const surcharge = presentation === "Haspel" ? product.haspelSurcharge?.value : "0";
         if (presentation === "Haspel" && !surcharge) {
           return Response.json(
-            { ok: false, error: `Fuer ${product.title} fehlt custom.haspel_surcharge.` },
+            {
+              ok: false,
+              error: `Fuer ${product.title} fehlt ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
+            },
             { status: 400 },
           );
         }
@@ -381,7 +453,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { status: 400 },
         );
       }
-      if (!isRopeProductType(originalVariant.product.productType)) {
+      if (!isRopeProduct(
+        originalVariant.product.productType,
+        originalVariant.product.ropeEligibility,
+        Boolean(config.ropeEligibilityMetafield),
+      )) {
         return Response.json(
           { ok: false, error: "Die Originalvariante des Zuschnitts ist kein Spezialseil." },
           { status: 400 },
@@ -429,7 +505,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
     }
 
-    const shippingPrice = calculateRopeShippingPrice(totalWeightKilograms);
+    const shippingPrice = calculateRopeShippingPrice(
+      totalWeightKilograms,
+      config.shippingTiers,
+    );
     const url = new URL(request.url);
     const customerId = normalizeCustomerId(url.searchParams.get("logged_in_customer_id") || "");
     const draftResult = await adminGraphql<{

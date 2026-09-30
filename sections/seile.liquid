@@ -101,7 +101,10 @@
   }
 {%- endstyle -%}
 
-<section class="rope-configurator-{{ section.id }} color-{{ section.settings.color_scheme }} gradient">
+<section
+  class="rope-configurator-{{ section.id }} color-{{ section.settings.color_scheme }} gradient"
+  data-rope-configurator-section
+>
   <div class="page-width rope-configurator__inner">
     <div class="rope-configurator__intro">
       <h2 class="h1">{{ section.settings.heading | escape }}</h2>
@@ -162,10 +165,10 @@
         <input
           type="number"
           inputmode="decimal"
-          min="{{ section.settings.minimum_length }}"
-          max="{{ section.settings.maximum_length }}"
+          min="0.5"
+          max="500"
           step="0.01"
-          value="{{ section.settings.default_length }}"
+          value="1"
           required
           data-rope-length
         >
@@ -195,140 +198,19 @@
 <script
   src="/apps/hanfwolf-pricing/script"
   data-proxy-path="/apps/hanfwolf-pricing"
+  data-disable-price-feature="true"
   defer
 ></script>
 
-<script>
-  (() => {
-    const form = document.getElementById('RopeConfigurator-{{ section.id }}');
-    if (!form || form.dataset.initialized === 'true') return;
-    form.dataset.initialized = 'true';
-
-    const section = form.closest('.rope-configurator-{{ section.id }}');
-    const cutsContainer = form.querySelector('[data-rope-cuts]');
-    const template = section.querySelector('[data-rope-cut-template]');
-    const errorElement = form.querySelector('[data-rope-error]');
-    const prepareButton = form.querySelector('[data-prepare-rope]');
-    const submitButton = form.querySelector('[data-rope-submit]');
-    let nextIndex = 0;
-
-    submitButton.disabled = true;
-
-    function getItems() {
-      const productId = 'gid://shopify/Product/{{ product.id }}';
-      return Array.from(cutsContainer.querySelectorAll('.rope-cut')).map((cut) => ({
-        productId,
-        quantity: Number(cut.querySelector('[data-rope-quantity]').value),
-        lengthMeters: cut.querySelector('[data-rope-length]').value,
-        presentation: cut.querySelector('[data-rope-presentation]:checked').value,
-      }));
-    }
-
-    function markConfigurationChanged() {
-      submitButton.disabled = true;
-      prepareButton.disabled = false;
-      prepareButton.textContent = 'Konfiguration korrekt?';
-    }
-
-    function addCut() {
-      const fragment = template.content.cloneNode(true);
-      const cut = fragment.querySelector('.rope-cut');
-      const index = nextIndex++;
-      const quantity = cut.querySelector('[data-rope-quantity]');
-      const length = cut.querySelector('[data-rope-length]');
-      const radios = cut.querySelectorAll('[data-rope-presentation]');
-      let preparationTimer;
-
-      quantity.id = `RopeQuantity-{{ section.id }}-${index}`;
-      length.id = `RopeLength-{{ section.id }}-${index}`;
-      cut.querySelector('[data-quantity-label]').htmlFor = quantity.id;
-      cut.querySelector('[data-length-label]').htmlFor = length.id;
-      radios.forEach((radio) => {
-        radio.name = `rope-presentation-${index}`;
-      });
-
-      cut.querySelector('[data-remove-rope-cut]').addEventListener('click', () => {
-        cut.remove();
-        updateRemoveButtons();
-        markConfigurationChanged();
-      });
-      length.addEventListener('input', markConfigurationChanged);
-      radios.forEach((radio) => radio.addEventListener('change', markConfigurationChanged));
-
-      cutsContainer.appendChild(fragment);
-      updateRemoveButtons();
-      markConfigurationChanged();
-    }
-
-    function updateRemoveButtons() {
-      const cuts = cutsContainer.querySelectorAll('.rope-cut');
-      cuts.forEach((cut) => {
-        cut.querySelector('[data-remove-rope-cut]').hidden = cuts.length === 1;
-      });
-    }
-
-    function showError(message) {
-      errorElement.textContent = message;
-      errorElement.hidden = !message;
-    }
-
-    form.querySelector('[data-add-rope-cut]').addEventListener('click', addCut);
-
-    prepareButton.addEventListener('click', async () => {
-      showError('');
-      if (!form.reportValidity()) return;
-
-      const prepareRopeCut = window.HanfwolfPricing?.prepareRopeCut;
-      if (!prepareRopeCut) {
-        showError('Der Hanfwolf-Warenkorbservice wurde nicht geladen.');
-        return;
-      }
-
-      prepareButton.disabled = true;
-      submitButton.disabled = true;
-      prepareButton.textContent = 'Varianten werden vorbereitet ...';
-
-      try {
-        await Promise.all(getItems().map((item) => prepareRopeCut(item)));
-        prepareButton.textContent = 'Konfiguration bestätigt';
-        submitButton.disabled = false;
-      } catch (error) {
-        prepareButton.disabled = false;
-        prepareButton.textContent = 'Konfiguration korrekt?';
-        showError(error instanceof Error ? error.message : 'Die Varianten konnten nicht vorbereitet werden.');
-      }
-    });
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      showError('');
-      if (!form.reportValidity()) return;
-
-      const items = getItems();
-
-      submitButton.disabled = true;
-      submitButton.setAttribute('aria-busy', 'true');
-
-      try {
-        if (!window.HanfwolfPricing?.addRopeCutToCart) {
-          throw new Error('Der Hanfwolf-Warenkorbservice wurde nicht geladen.');
-        }
-
-        for (const item of items) {
-          await window.HanfwolfPricing.addRopeCutToCart(item);
-        }
-
-        window.location.assign('{{ routes.cart_url }}');
-      } catch (error) {
-        showError(error instanceof Error ? error.message : 'Der Zuschnitt konnte nicht in den Warenkorb gelegt werden.');
-        submitButton.disabled = false;
-        submitButton.removeAttribute('aria-busy');
-      }
-    });
-
-    addCut();
-  })();
-</script>
+<script
+  src="/apps/hanfwolf-pricing/rope-configurator-script"
+  data-form-id="RopeConfigurator-{{ section.id }}"
+  data-section-id="{{ section.id }}"
+  data-product-id="gid://shopify/Product/{{ product.id }}"
+  data-cart-url="{{ routes.cart_url }}"
+  data-config-url="/apps/hanfwolf-pricing/config"
+  defer
+></script>
 
 {% schema %}
 {
@@ -347,24 +229,6 @@
       "id": "description",
       "label": "Beschreibung",
       "default": "Lege Anzahl, Länge und Aufmachung für jeden gewünschten Zuschnitt fest."
-    },
-    {
-      "type": "number",
-      "id": "minimum_length",
-      "label": "Minimale Länge in Metern",
-      "default": 0.5
-    },
-    {
-      "type": "number",
-      "id": "maximum_length",
-      "label": "Maximale Länge in Metern",
-      "default": 500
-    },
-    {
-      "type": "number",
-      "id": "default_length",
-      "label": "Vorgabewert in Metern",
-      "default": 1
     },
     {
       "type": "color_scheme",

@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 
-import scriptBody from "../scripts/hanfwolf-pricing.js?raw";
+import scriptBody from "../scripts/rope-configurator.js?raw";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await request.text();

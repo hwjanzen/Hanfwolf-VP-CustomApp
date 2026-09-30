@@ -32,3 +32,23 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model RopeConfiguratorSetup {
+  shop                                       String   @id
+  packageQuantityMetafieldDefinitionId       String?
+  packageQuantityMetafieldNamespace          String?
+  packageQuantityMetafieldKey                String?
+  haspelSurchargeMetafieldDefinitionId       String?
+  haspelSurchargeMetafieldNamespace          String?
+  haspelSurchargeMetafieldKey                String?
+  ropeEligibilityMetafieldDefinitionId       String?
+  ropeEligibilityMetafieldNamespace          String?
+  ropeEligibilityMetafieldKey                String?
+  minLengthHundredths                        Int      @default(50)
+  maxLengthHundredths                        Int      @default(50000)
+  defaultLengthHundredths                    Int      @default(100)
+  minQuantity                                Int      @default(1)
+  maxQuantity                                Int      @default(999)
+  shippingTiersJson                          String   @default("[{\"maxWeightGrams\":10000,\"priceCents\":1500},{\"maxWeightGrams\":50000,\"priceCents\":3000},{\"maxWeightGrams\":200000,\"priceCents\":5000},{\"maxWeightGrams\":null,\"priceCents\":15000}]")
+  updatedAt                                  DateTime @updatedAt
+}

@@ -1,3 +1,9 @@
+import {
+  DEFAULT_ROPE_CONFIG,
+  type RopeConfiguratorConfig,
+  type RopeShippingTier,
+} from "./rope-configurator-config";
+
 export type RopeCut = {
   variantId: string;
   quantity: number;
@@ -46,6 +52,16 @@ export function isRopeProductType(productType: string) {
   return productType.trim().toLowerCase().startsWith("spezialseil");
 }
 
+export function isRopeProduct(
+  productType: string,
+  eligibilityMetafield: { value: string } | null | undefined,
+  hasEligibilityMapping: boolean,
+) {
+  return hasEligibilityMapping
+    ? eligibilityMetafield?.value === "true"
+    : isRopeProductType(productType);
+}
+
 export function selectRopeMasterVariant<T extends RopeMasterVariantCandidate>(
   variants: T[],
 ): RopeMasterVariantSelection<T> {
@@ -83,7 +99,19 @@ function parseScaledDecimal(value: string, decimals: number, label: string) {
   return Number(match[1]) * 10 ** decimals + Number(fraction || "0");
 }
 
-export function normalizeRopeCuts(value: unknown): RopeCut[] {
+type RopeValidationLimits = Pick<
+  RopeConfiguratorConfig,
+  "minLengthHundredths" | "maxLengthHundredths" | "minQuantity" | "maxQuantity"
+>;
+
+function formatHundredths(value: number) {
+  return (value / 100).toString().replace(".", ",");
+}
+
+export function normalizeRopeCuts(
+  value: unknown,
+  limits: RopeValidationLimits = DEFAULT_ROPE_CONFIG,
+): RopeCut[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error("Mindestens ein Seil-Zuschnitt ist erforderlich.");
   }
@@ -107,11 +135,22 @@ export function normalizeRopeCuts(value: unknown): RopeCut[] {
     if (!/^gid:\/\/shopify\/ProductVariant\/\d+$/.test(variantId)) {
       throw new Error(`Variant-ID in Position ${index + 1} ist ungueltig.`);
     }
-    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) {
-      throw new Error(`Menge in Position ${index + 1} muss zwischen 1 und 999 liegen.`);
+    if (
+      !Number.isSafeInteger(quantity) ||
+      quantity < limits.minQuantity ||
+      quantity > limits.maxQuantity
+    ) {
+      throw new Error(
+        `Menge in Position ${index + 1} muss zwischen ${limits.minQuantity} und ${limits.maxQuantity} liegen.`,
+      );
     }
-    if (lengthHundredths < 50 || lengthHundredths > 50_000) {
-      throw new Error(`Laenge in Position ${index + 1} muss zwischen 0,5 und 500 m liegen.`);
+    if (
+      lengthHundredths < limits.minLengthHundredths ||
+      lengthHundredths > limits.maxLengthHundredths
+    ) {
+      throw new Error(
+        `Laenge in Position ${index + 1} muss zwischen ${formatHundredths(limits.minLengthHundredths)} und ${formatHundredths(limits.maxLengthHundredths)} m liegen.`,
+      );
     }
     if (presentation !== "Ring" && presentation !== "Haspel") {
       throw new Error(`Aufmachung in Position ${index + 1} ist ungueltig.`);
@@ -126,7 +165,10 @@ export function normalizeRopeCuts(value: unknown): RopeCut[] {
   });
 }
 
-export function normalizeRopeProductCut(value: unknown): RopeProductCut {
+export function normalizeRopeProductCut(
+  value: unknown,
+  limits: RopeValidationLimits = DEFAULT_ROPE_CONFIG,
+): RopeProductCut {
   if (!value || typeof value !== "object") {
     throw new Error("Der Seil-Zuschnitt ist ungueltig.");
   }
@@ -141,11 +183,22 @@ export function normalizeRopeProductCut(value: unknown): RopeProductCut {
   if (!/^gid:\/\/shopify\/Product\/\d+$/.test(productId)) {
     throw new Error("Produkt-ID des Seils ist ungueltig.");
   }
-  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) {
-    throw new Error("Menge muss zwischen 1 und 999 liegen.");
+  if (
+    !Number.isSafeInteger(quantity) ||
+    quantity < limits.minQuantity ||
+    quantity > limits.maxQuantity
+  ) {
+    throw new Error(
+      `Menge muss zwischen ${limits.minQuantity} und ${limits.maxQuantity} liegen.`,
+    );
   }
-  if (lengthHundredths < 50 || lengthHundredths > 50_000) {
-    throw new Error("Laenge muss zwischen 0,5 und 500 m liegen.");
+  if (
+    lengthHundredths < limits.minLengthHundredths ||
+    lengthHundredths > limits.maxLengthHundredths
+  ) {
+    throw new Error(
+      `Laenge muss zwischen ${formatHundredths(limits.minLengthHundredths)} und ${formatHundredths(limits.maxLengthHundredths)} m liegen.`,
+    );
   }
   if (presentation !== "Ring" && presentation !== "Haspel") {
     throw new Error("Aufmachung ist ungueltig.");
@@ -179,13 +232,14 @@ export function createRopeCartConfigurationKey(
   meterPrice: string,
   weightPerMeter: number,
   weightUnit: string,
+  limits: RopeValidationLimits = DEFAULT_ROPE_CONFIG,
 ) {
   const normalizedCut = normalizeRopeProductCut({
     productId,
     quantity: 1,
     lengthMeters,
     presentation: "Ring",
-  });
+  }, limits);
   const priceCents = parseScaledDecimal(meterPrice, 2, "Meterpreis");
   if (!Number.isFinite(weightPerMeter) || weightPerMeter <= 0) {
     throw new Error("Das Gewicht pro Meter muss groesser als 0 sein.");
@@ -204,7 +258,10 @@ export function createRopeCartConfigurationKey(
   ].join("|");
 }
 
-export function parseRopeCartConfigurationKey(value: string): RopeCartConfiguration {
+export function parseRopeCartConfigurationKey(
+  value: string,
+  limits: RopeValidationLimits = DEFAULT_ROPE_CONFIG,
+): RopeCartConfiguration {
   const [version, ...parts] = value.split("|");
 
   if (version === "v1") {
@@ -220,7 +277,7 @@ export function parseRopeCartConfigurationKey(value: string): RopeCartConfigurat
         lengthMeters,
         presentation,
       },
-    ])[0];
+    ], limits)[0];
     if (!/^\d+$/.test(priceCents)) {
       throw new Error("Die Zuschnitt-Variante hat einen ungueltigen Preis.");
     }
@@ -243,7 +300,7 @@ export function parseRopeCartConfigurationKey(value: string): RopeCartConfigurat
       quantity: 1,
       lengthMeters,
       presentation: "Ring",
-    });
+    }, limits);
     if (!/^\d+$/.test(priceCents)) {
       throw new Error("Der Meterpreis im Konfigurationsschluessel ist ungueltig.");
     }
@@ -282,15 +339,23 @@ export function calculateRopeUnitWeight(
   return Number((weightPerMeter * (lengthHundredths / 100)).toFixed(6));
 }
 
-export function calculateRopeShippingPrice(totalWeightKilograms: number) {
+export function calculateRopeShippingPrice(
+  totalWeightKilograms: number,
+  tiers: RopeShippingTier[] = DEFAULT_ROPE_CONFIG.shippingTiers,
+) {
   if (!Number.isFinite(totalWeightKilograms) || totalWeightKilograms <= 0) {
     throw new Error("Das Gesamtgewicht muss groesser als 0 kg sein.");
   }
 
-  if (totalWeightKilograms <= 10) return "15.00";
-  if (totalWeightKilograms <= 50) return "30.00";
-  if (totalWeightKilograms <= 200) return "50.00";
-  return "150.00";
+  const totalWeightGrams = totalWeightKilograms * 1000;
+  const tier = tiers.find(
+    (candidate) =>
+      candidate.maxWeightGrams === null || totalWeightGrams <= candidate.maxWeightGrams,
+  );
+  if (!tier) {
+    throw new Error("Fuer das Gesamtgewicht ist keine Versandstaffel konfiguriert.");
+  }
+  return (tier.priceCents / 100).toFixed(2);
 }
 
 export function convertWeightToKilograms(value: number, unit: string) {

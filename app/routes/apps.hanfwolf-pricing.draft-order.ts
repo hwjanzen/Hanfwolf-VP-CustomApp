@@ -1,11 +1,13 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { normalizeCustomerId } from "../services/price-resolver.server";
+import { getRopeConfiguratorConfig } from "../services/rope-configurator-setup.server";
 import {
   calculateRopeShippingPrice,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  isRopeProduct,
   normalizeRopeCuts,
 } from "../services/rope-draft-order.server";
 import { adminGraphql } from "../services/shopify-graphql.server";
@@ -26,6 +28,7 @@ type VariantNode = {
     title: string;
     productType: string;
     haspelSurcharge: { value: string } | null;
+    ropeEligibility: { value: string } | null;
   };
 };
 
@@ -35,11 +38,12 @@ async function createRopeDraftOrder(request: Request) {
   if (!admin || !session) {
     return Response.json({ ok: false, error: "App-Proxy-Sitzung fehlt." }, { status: 401 });
   }
+  const config = await getRopeConfiguratorConfig(session.shop);
 
   let cuts;
   try {
     const body = await request.json();
-    cuts = normalizeRopeCuts(body?.items);
+    cuts = normalizeRopeCuts(body?.items, config);
   } catch (error) {
     return Response.json(
       { ok: false, error: error instanceof Error ? error.message : "Ungueltige Anfrage." },
@@ -54,7 +58,13 @@ async function createRopeDraftOrder(request: Request) {
   }>(
     admin,
     `#graphql
-    query RopeDraftOrderVariants($ids: [ID!]!) {
+    query RopeDraftOrderVariants(
+      $ids: [ID!]!
+      $haspelNamespace: String!
+      $haspelKey: String!
+      $eligibilityNamespace: String!
+      $eligibilityKey: String!
+    ) {
       shop {
         currencyCode
       }
@@ -77,14 +87,23 @@ async function createRopeDraftOrder(request: Request) {
             id
             title
             productType
-            haspelSurcharge: metafield(namespace: "custom", key: "haspel_surcharge") {
+            haspelSurcharge: metafield(namespace: $haspelNamespace, key: $haspelKey) {
+              value
+            }
+            ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
               value
             }
           }
         }
       }
     }`,
-    { ids: variantIds },
+    {
+      ids: variantIds,
+      haspelNamespace: config.haspelSurchargeMetafield?.namespace ?? "$app",
+      haspelKey: config.haspelSurchargeMetafield?.key ?? "unconfigured_haspel_surcharge",
+      eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
+      eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
+    },
   );
 
   if (!variantsResult.ok) {
@@ -108,15 +127,22 @@ async function createRopeDraftOrder(request: Request) {
       if (!variant) {
         throw new Error(`Variante ${cut.variantId} wurde nicht gefunden.`);
       }
-      if (variant.product.productType.trim().toLowerCase() !== "spezialseile") {
+      if (!isRopeProduct(
+        variant.product.productType,
+        variant.product.ropeEligibility,
+        Boolean(config.ropeEligibilityMetafield),
+      )) {
         throw new Error(`${variant.product.title} ist kein Produkt vom Typ Spezialseile.`);
       }
 
+      if (cut.presentation === "Haspel" && !config.haspelSurchargeMetafield) {
+        throw new Error("Im RopeConfigurator Setup fehlt die Zuordnung fuer den Haspel-Aufpreis.");
+      }
       const surcharge =
         cut.presentation === "Haspel" ? variant.product.haspelSurcharge?.value : "0";
       if (cut.presentation === "Haspel" && !surcharge) {
         throw new Error(
-          `Fuer ${variant.product.title} fehlt das Produkt-Metafeld custom.haspel_surcharge.`,
+          `Fuer ${variant.product.title} fehlt das Produkt-Metafeld ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
         );
       }
 
@@ -189,7 +215,7 @@ async function createRopeDraftOrder(request: Request) {
       )
       .toFixed(6),
   );
-  const shippingPrice = calculateRopeShippingPrice(totalWeight);
+  const shippingPrice = calculateRopeShippingPrice(totalWeight, config.shippingTiers);
 
   const url = new URL(request.url);
   const customerId = normalizeCustomerId(url.searchParams.get("logged_in_customer_id") || "");

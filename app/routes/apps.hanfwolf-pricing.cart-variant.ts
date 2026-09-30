@@ -3,10 +3,14 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { ensureRopeDefaultConfigurationMetafieldDefinition } from "../services/pricing-bootstrap.server";
 import {
+  getRopeConfiguratorConfig,
+  setPackageQuantityForVariant,
+} from "../services/rope-configurator-setup.server";
+import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   createRopeCartConfigurationKey,
-  isRopeProductType,
+  isRopeProduct,
   normalizeRopeProductCut,
   selectRopeMasterVariant,
 } from "../services/rope-draft-order.server";
@@ -29,10 +33,12 @@ type SourceVariant = {
 
 type SourceProduct = {
   id: string;
+  handle: string;
   title: string;
   productType: string;
   options: Array<{ id: string; name: string }>;
   haspelSurcharge: { value: string } | null;
+  ropeEligibility: { value: string } | null;
   variants: { nodes: SourceVariant[] };
 };
 
@@ -346,11 +352,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     await ensureRopeDefaultConfigurationMetafieldDefinition(admin);
+    const config = await getRopeConfiguratorConfig(session.shop);
 
     let cut;
     try {
       const body = await request.json();
-      cut = normalizeRopeProductCut(body?.item);
+      cut = normalizeRopeProductCut(body?.item, config);
     } catch (error) {
       return Response.json(
         { ok: false, error: error instanceof Error ? error.message : "Ungueltige Anfrage." },
@@ -363,16 +370,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }>(
       admin,
       `#graphql
-      query RopeCartMasterProduct($productId: ID!) {
+      query RopeCartMasterProduct(
+        $productId: ID!
+        $haspelNamespace: String!
+        $haspelKey: String!
+        $eligibilityNamespace: String!
+        $eligibilityKey: String!
+      ) {
             product(id: $productId) {
               id
+              handle
               title
               productType
               options {
                 id
                 name
               }
-              haspelSurcharge: metafield(namespace: "custom", key: "haspel_surcharge") {
+              haspelSurcharge: metafield(namespace: $haspelNamespace, key: $haspelKey) {
+                value
+              }
+              ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
                 value
               }
               variants(first: 250) {
@@ -403,7 +420,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               }
             }
           }`,
-          { productId: cut.productId },
+          {
+            productId: cut.productId,
+            haspelNamespace: config.haspelSurchargeMetafield?.namespace ?? "$app",
+            haspelKey: config.haspelSurchargeMetafield?.key ?? "unconfigured_haspel_surcharge",
+            eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
+            eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
+          },
         );
 
         if (!sourceResult.ok) {
@@ -419,7 +442,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         const sourceProduct = sourceResult.data.product;
-        if (!sourceProduct || !isRopeProductType(sourceProduct.productType)) {
+        if (
+          !sourceProduct ||
+          !isRopeProduct(
+            sourceProduct.productType,
+            sourceProduct.ropeEligibility,
+            Boolean(config.ropeEligibilityMetafield),
+          )
+        ) {
           return Response.json(
             { ok: false, error: "Das ausgewaehlte Hauptprodukt ist kein Spezialseil." },
             { status: 400 },
@@ -495,10 +525,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           );
         }
 
+        if (cut.presentation === "Haspel" && !config.haspelSurchargeMetafield) {
+          return Response.json(
+            { ok: false, error: "Im RopeConfigurator Setup fehlt die Zuordnung fuer den Haspel-Aufpreis." },
+            { status: 400 },
+          );
+        }
         const surcharge = cut.presentation === "Haspel" ? sourceProduct.haspelSurcharge?.value : "0";
         if (cut.presentation === "Haspel" && !surcharge) {
           return Response.json(
-            { ok: false, error: `Fuer ${sourceProduct.title} fehlt custom.haspel_surcharge.` },
+            {
+              ok: false,
+              error: `Fuer ${sourceProduct.title} fehlt ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
+            },
             { status: 400 },
           );
         }
@@ -525,6 +564,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           source.price,
           sourceWeight.value,
           sourceWeight.unit,
+          config,
         );
         const sku = createConfigurationSku(configurationKey);
         let cartVariant = await findRopeCartVariant(admin, sku, configurationKey);
@@ -647,6 +687,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           }
         }
 
+        await setPackageQuantityForVariant(admin, session.shop, cartVariant.id, config);
         await ensureRopeCartVariantInventorySettings(admin, sourceProduct.id, cartVariant, {
           value: configuredWeight,
           unit: sourceWeight.unit,
@@ -663,6 +704,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             ok: true,
             cartVariantId: cartVariant.id,
             cartVariantNumericId: getNumericVariantId(cartVariant.id),
+            productHandle: sourceProduct.handle,
             quantity: cut.quantity,
             unitPrice,
             properties: {
