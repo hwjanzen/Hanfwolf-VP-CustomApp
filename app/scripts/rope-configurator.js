@@ -37,7 +37,7 @@
   function markConfigurationChanged() {
     submitButton.disabled = true;
     prepareButton.disabled = false;
-    prepareButton.textContent = "Konfiguration korrekt?";
+    prepareButton.textContent = "Konfiguration abschließen";
   }
 
   function updateRemoveButtons() {
@@ -121,18 +121,18 @@
 
     prepareButton.disabled = true;
     submitButton.disabled = true;
-    prepareButton.textContent = "Varianten werden erstellt und synchronisiert ...";
+    prepareButton.textContent = "Zuschnitte werden erstellt und synchronisiert ...";
 
     try {
       await Promise.all(getItems().map(function (item) {
         return prepareRopeCut(item);
       }));
-      prepareButton.textContent = "Konfiguration bestaetigt";
+      prepareButton.textContent = "Konfiguration bestätigt";
       submitButton.disabled = false;
     } catch (error) {
       prepareButton.disabled = false;
-      prepareButton.textContent = "Konfiguration korrekt?";
-      showError(error instanceof Error ? error.message : "Die Varianten konnten nicht vorbereitet werden.");
+      prepareButton.textContent = "Konfiguration abschließen";
+      showError(error instanceof Error ? error.message : "Die Zuschnitte konnten nicht vorbereitet werden.");
     }
   });
 

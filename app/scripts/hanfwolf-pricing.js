@@ -493,29 +493,6 @@
       document.querySelector("[id^='ProductInfo-'][id$='__main']");
 
     if (productInfoSection) {
-      var priceEl = productInfoSection.querySelector(
-        "[id^='price-template--'][id$='__main'], [id^='price-'][id$='__main']",
-      );
-
-      if (priceEl && priceEl.parentElement) {
-        var next = priceEl.nextElementSibling;
-        var anchor =
-          next &&
-          next.getAttribute &&
-          next.getAttribute("data-hanfwolf-pricebox-anchor") === "product"
-            ? next
-            : null;
-
-        if (!anchor) {
-          anchor = document.createElement("div");
-          anchor.setAttribute("data-hanfwolf-pricebox-anchor", "product");
-          anchor.style.marginTop = "10px";
-          priceEl.insertAdjacentElement("afterend", anchor);
-        }
-
-        return anchor;
-      }
-
       return productInfoSection;
     }
 
