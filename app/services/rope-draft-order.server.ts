@@ -106,6 +106,11 @@ function formatHundredths(value: number) {
   return (value / 100).toString().replace(".", ",");
 }
 
+export function formatRopeLength(lengthMeters: string) {
+  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Länge");
+  return `${(lengthHundredths / 100).toFixed(2).replace(".", ",")}m`;
+}
+
 export function normalizeRopeCuts(
   value: unknown,
   limits: RopeValidationLimits = DEFAULT_ROPE_CONFIG,
@@ -116,7 +121,7 @@ export function normalizeRopeCuts(
 
   return value.map((item, index) => {
     if (!item || typeof item !== "object") {
-      throw new Error(`Position ${index + 1} ist ungueltig.`);
+      throw new Error(`Position ${index + 1} ist ungültig.`);
     }
 
     const input = item as Record<string, unknown>;
@@ -127,11 +132,11 @@ export function normalizeRopeCuts(
     const lengthHundredths = parseScaledDecimal(
       lengthMeters,
       2,
-      `Laenge in Position ${index + 1}`,
+      `Länge in Position ${index + 1}`,
     );
 
     if (!/^gid:\/\/shopify\/ProductVariant\/\d+$/.test(variantId)) {
-      throw new Error(`Variant-ID in Position ${index + 1} ist ungueltig.`);
+      throw new Error(`Variant-ID in Position ${index + 1} ist ungültig.`);
     }
     if (
       !Number.isSafeInteger(quantity) ||
@@ -147,11 +152,11 @@ export function normalizeRopeCuts(
       lengthHundredths > limits.maxLengthHundredths
     ) {
       throw new Error(
-        `Laenge in Position ${index + 1} muss zwischen ${formatHundredths(limits.minLengthHundredths)} und ${formatHundredths(limits.maxLengthHundredths)} m liegen.`,
+        `Länge in Position ${index + 1} muss zwischen ${formatHundredths(limits.minLengthHundredths)} und ${formatHundredths(limits.maxLengthHundredths)} m liegen.`,
       );
     }
     if (presentation !== "Ring" && presentation !== "Haspel") {
-      throw new Error(`Aufmachung in Position ${index + 1} ist ungueltig.`);
+      throw new Error(`Aufmachung in Position ${index + 1} ist ungültig.`);
     }
 
     return {
@@ -168,7 +173,7 @@ export function normalizeRopeProductCut(
   limits: RopeValidationLimits = DEFAULT_ROPE_CONFIG,
 ): RopeProductCut {
   if (!value || typeof value !== "object") {
-    throw new Error("Der Seil-Zuschnitt ist ungueltig.");
+    throw new Error("Der Seil-Zuschnitt ist ungültig.");
   }
 
   const input = value as Record<string, unknown>;
@@ -176,10 +181,10 @@ export function normalizeRopeProductCut(
   const quantity = Number(input.quantity);
   const lengthMeters = String(input.lengthMeters || "").trim();
   const presentation = String(input.presentation || "Ring");
-  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Laenge");
+  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Länge");
 
   if (!/^gid:\/\/shopify\/Product\/\d+$/.test(productId)) {
-    throw new Error("Produkt-ID des Seils ist ungueltig.");
+    throw new Error("Produkt-ID des Seils ist ungültig.");
   }
   if (
     !Number.isSafeInteger(quantity) ||
@@ -195,11 +200,11 @@ export function normalizeRopeProductCut(
     lengthHundredths > limits.maxLengthHundredths
   ) {
     throw new Error(
-      `Laenge muss zwischen ${formatHundredths(limits.minLengthHundredths)} und ${formatHundredths(limits.maxLengthHundredths)} m liegen.`,
+      `Länge muss zwischen ${formatHundredths(limits.minLengthHundredths)} und ${formatHundredths(limits.maxLengthHundredths)} m liegen.`,
     );
   }
   if (presentation !== "Ring" && presentation !== "Haspel") {
-    throw new Error("Aufmachung ist ungueltig.");
+    throw new Error("Aufmachung ist ungültig.");
   }
 
   return {
@@ -216,7 +221,7 @@ export function calculateRopeUnitPrice(
   surcharge = "0",
 ) {
   const meterPriceCents = parseScaledDecimal(meterPrice, 2, "Meterpreis");
-  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Laenge");
+  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Länge");
   const surchargeCents = parseScaledDecimal(surcharge, 2, "Aufpreis");
   const unitPriceCents =
     Math.ceil((meterPriceCents * lengthHundredths) / 100) + surchargeCents;
@@ -240,10 +245,10 @@ export function createRopeCartConfigurationKey(
   }, limits);
   const priceCents = parseScaledDecimal(meterPrice, 2, "Meterpreis");
   if (!Number.isFinite(weightPerMeter) || weightPerMeter <= 0) {
-    throw new Error("Das Gewicht pro Meter muss groesser als 0 sein.");
+    throw new Error("Das Gewicht pro Meter muss größer als 0 sein.");
   }
   if (!/^(GRAMS|KILOGRAMS|POUNDS|OUNCES)$/.test(weightUnit)) {
-    throw new Error("Die Gewichtseinheit wird nicht unterstuetzt.");
+    throw new Error("Die Gewichtseinheit wird nicht unterstützt.");
   }
 
   return [
@@ -265,7 +270,7 @@ export function parseRopeCartConfigurationKey(
   if (version === "v1") {
     const [variantId, lengthMeters, presentation, priceCents] = parts;
     if (!variantId || !lengthMeters || !presentation || !priceCents) {
-      throw new Error("Die Zuschnitt-Variante hat keinen gueltigen Konfigurationsschluessel.");
+      throw new Error("Die Zuschnitt-Variante hat keinen gültigen Konfigurationsschlüssel.");
     }
 
     const normalizedCut = normalizeRopeCuts([
@@ -277,7 +282,7 @@ export function parseRopeCartConfigurationKey(
       },
     ], limits)[0];
     if (!/^\d+$/.test(priceCents)) {
-      throw new Error("Die Zuschnitt-Variante hat einen ungueltigen Preis.");
+      throw new Error("Die Zuschnitt-Variante hat einen ungültigen Preis.");
     }
 
     return {
@@ -290,7 +295,7 @@ export function parseRopeCartConfigurationKey(
   if (version === "v2") {
     const [productId, lengthMeters, priceCents, weightValue, weightUnit] = parts;
     if (!productId || !lengthMeters || !priceCents || !weightValue || !weightUnit) {
-      throw new Error("Die Produkt-Zuschnittvariante hat keinen gueltigen Konfigurationsschluessel.");
+      throw new Error("Die Produkt-Zuschnittvariante hat keinen gültigen Konfigurationsschlüssel.");
     }
 
     const normalizedCut = normalizeRopeProductCut({
@@ -300,15 +305,15 @@ export function parseRopeCartConfigurationKey(
       presentation: "Ring",
     }, limits);
     if (!/^\d+$/.test(priceCents)) {
-      throw new Error("Der Meterpreis im Konfigurationsschluessel ist ungueltig.");
+      throw new Error("Der Meterpreis im Konfigurationsschlüssel ist ungültig.");
     }
     const meterPrice = (Number(priceCents) / 100).toFixed(2);
     const weightPerMeter = Number(weightValue);
     if (!Number.isFinite(weightPerMeter) || weightPerMeter <= 0) {
-      throw new Error("Das Gewicht im Konfigurationsschluessel ist ungueltig.");
+      throw new Error("Das Gewicht im Konfigurationsschlüssel ist ungültig.");
     }
     if (!/^(GRAMS|KILOGRAMS|POUNDS|OUNCES)$/.test(weightUnit)) {
-      throw new Error("Die Gewichtseinheit im Konfigurationsschluessel wird nicht unterstuetzt.");
+      throw new Error("Die Gewichtseinheit im Konfigurationsschlüssel wird nicht unterstützt.");
     }
 
     return {
@@ -322,7 +327,7 @@ export function parseRopeCartConfigurationKey(
     };
   }
 
-  throw new Error("Die Version des Zuschnitt-Konfigurationsschluessels wird nicht unterstuetzt.");
+  throw new Error("Die Version des Zuschnitt-Konfigurationsschlüssels wird nicht unterstützt.");
 }
 
 export function calculateRopeUnitWeight(
@@ -333,13 +338,13 @@ export function calculateRopeUnitWeight(
     throw new Error("An der Variante muss ein Gewicht pro Meter gepflegt sein.");
   }
 
-  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Laenge");
+  const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Länge");
   return Number((weightPerMeter * (lengthHundredths / 100)).toFixed(6));
 }
 
 export function convertWeightToKilograms(value: number, unit: string) {
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error("Das Gewicht ist ungueltig.");
+    throw new Error("Das Gewicht ist ungültig.");
   }
 
   switch (unit) {
@@ -352,6 +357,6 @@ export function convertWeightToKilograms(value: number, unit: string) {
     case "OUNCES":
       return value * 0.028349523125;
     default:
-      throw new Error(`Nicht unterstuetzte Gewichtseinheit: ${unit}.`);
+      throw new Error(`Nicht unterstützte Gewichtseinheit: ${unit}.`);
   }
 }

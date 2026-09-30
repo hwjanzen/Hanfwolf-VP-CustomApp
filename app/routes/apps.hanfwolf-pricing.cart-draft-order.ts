@@ -9,6 +9,7 @@ import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  formatRopeLength,
   isRopeProduct,
   parseRopeCartConfigurationKey,
   type RopeCartConfiguration,
@@ -63,14 +64,14 @@ function normalizeCartItems(value: unknown): CartItem[] {
 
   return value.map((item, index) => {
     if (!item || typeof item !== "object") {
-      throw new Error(`Warenkorbposition ${index + 1} ist ungueltig.`);
+      throw new Error(`Warenkorbposition ${index + 1} ist ungültig.`);
     }
 
     const input = item as Record<string, unknown>;
     const variantId = normalizeVariantId(String(input.variantId || ""));
     const quantity = Number(input.quantity);
     if (!variantId) {
-      throw new Error(`Variant-ID in Warenkorbposition ${index + 1} ist ungueltig.`);
+      throw new Error(`Variant-ID in Warenkorbposition ${index + 1} ist ungültig.`);
     }
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) {
       throw new Error(`Menge in Warenkorbposition ${index + 1} muss zwischen 1 und 999 liegen.`);
@@ -202,7 +203,7 @@ async function loadRopeProducts(
 function getWeightKilograms(variant: VariantNode, quantity: number) {
   const weight = variant.inventoryItem.measurement.weight;
   if (!weight) {
-    throw new Error(`Fuer ${variant.product.title} fehlt das Varianten-Gewicht.`);
+    throw new Error(`Für ${variant.product.title} fehlt das Varianten-Gewicht.`);
   }
 
   return Number(convertWeightToKilograms(weight.value * quantity, weight.unit).toFixed(6));
@@ -222,7 +223,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       cartItems = normalizeCartItems(body?.items);
     } catch (error) {
       return Response.json(
-        { ok: false, error: error instanceof Error ? error.message : "Ungueltige Warenkorbanfrage." },
+        { ok: false, error: error instanceof Error ? error.message : "Ungültige Warenkorbanfrage." },
         { status: 400 },
       );
     }
@@ -250,7 +251,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       } catch (error) {
         return Response.json(
-          { ok: false, error: error instanceof Error ? error.message : "Ungueltige Zuschnitt-Variante." },
+          { ok: false, error: error instanceof Error ? error.message : "Ungültige Zuschnitt-Variante." },
           { status: 400 },
         );
       }
@@ -278,7 +279,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
     if (!shopResult.ok) {
       return Response.json(
-        { ok: false, error: "Shop-Waehrung konnte nicht geladen werden.", details: shopResult.errors },
+        { ok: false, error: "Shop-Währung konnte nicht geladen werden.", details: shopResult.errors },
         { status: 502 },
       );
     }
@@ -296,7 +297,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           config.ropeProductType,
         )) {
           return Response.json(
-            { ok: false, error: "Spezialseile muessen ueber den Zuschnitt-Konfigurator in den Warenkorb gelegt werden." },
+            { ok: false, error: "Spezialseile müssen über den Zuschnitt-Konfigurator in den Warenkorb gelegt werden." },
             { status: 400 },
           );
         }
@@ -340,7 +341,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const presentation = item.properties.Aufmachung;
         if (presentation !== "Ring" && presentation !== "Haspel") {
           return Response.json(
-            { ok: false, error: "Aufmachung fehlt oder ist ungueltig. Bitte den Zuschnitt erneut konfigurieren." },
+            { ok: false, error: "Aufmachung fehlt oder ist ungültig. Bitte den Zuschnitt erneut konfigurieren." },
             { status: 400 },
           );
         }
@@ -351,14 +352,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
         if (Number(cartVariant.price).toFixed(2) !== baseUnitPrice) {
           return Response.json(
-            { ok: false, error: "Der Cart-Preis passt nicht mehr zum gespeicherten Produktpreis. Bitte den Zuschnitt erneut hinzufuegen." },
+            { ok: false, error: "Der Cart-Preis passt nicht mehr zum gespeicherten Produktpreis. Bitte den Zuschnitt erneut hinzufügen." },
             { status: 400 },
           );
         }
 
         if (presentation === "Haspel" && !config.haspelSurchargeMetafield) {
           return Response.json(
-            { ok: false, error: "Im RopeConfigurator Setup fehlt die Zuordnung fuer den Haspel-Aufpreis." },
+            { ok: false, error: "Im RopeConfigurator Setup fehlt die Zuordnung für den Haspel-Aufpreis." },
             { status: 400 },
           );
         }
@@ -367,7 +368,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return Response.json(
             {
               ok: false,
-              error: `Fuer ${product.title} fehlt ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
+              error: `Für ${product.title} fehlt ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
             },
             { status: 400 },
           );
@@ -392,7 +393,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
         if (!masterVariant) {
           return Response.json(
-            { ok: false, error: `Fuer ${product.title} wurde keine Variante mit is_default_configuration gefunden.` },
+            { ok: false, error: `Für ${product.title} wurde keine Variante mit is_default_configuration gefunden.` },
             { status: 400 },
           );
         }
@@ -412,7 +413,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           taxable: masterVariant.taxable,
           ...(masterVariant.sku ? { sku: masterVariant.sku } : {}),
           customAttributes: [
-            { key: "Laenge", value: `${configuration.lengthMeters} m` },
+            { key: "Länge", value: formatRopeLength(configuration.lengthMeters) },
             { key: "Aufmachung", value: presentation },
             { key: "Hauptprodukt", value: product.id },
             { key: "_hanfwolf_rope_configuration", value: cartVariant.ropeConfiguration!.value },
@@ -447,7 +448,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const weight = originalVariant.inventoryItem.measurement.weight;
       if (!weight) {
         return Response.json(
-          { ok: false, error: `Fuer ${originalVariant.product.title} fehlt das Varianten-Gewicht pro Meter.` },
+          { ok: false, error: `Für ${originalVariant.product.title} fehlt das Varianten-Gewicht pro Meter.` },
           { status: 400 },
         );
       }
@@ -471,7 +472,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         taxable: originalVariant.taxable,
         ...(originalVariant.sku ? { sku: originalVariant.sku } : {}),
         customAttributes: [
-          { key: "Laenge", value: `${configuration.lengthMeters} m` },
+          { key: "Länge", value: formatRopeLength(configuration.lengthMeters) },
           { key: "Aufmachung", value: configuration.presentation },
           { key: "Originalvariante", value: originalVariant.id },
           { key: "_hanfwolf_rope_configuration", value: cartVariant.ropeConfiguration!.value },

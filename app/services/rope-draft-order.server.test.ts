@@ -4,6 +4,7 @@ import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  formatRopeLength,
   isRopeProduct,
   isRopeProductType,
   normalizeRopeCuts,
@@ -75,6 +76,11 @@ describe("rope draft order pricing", () => {
     expect(calculateRopeUnitPrice("2.90", "1,3")).toBe("3.77");
     expect(calculateRopeUnitPrice("2.90", "7.75")).toBe("22.48");
     expect(calculateRopeUnitPrice("2.90", "7.75", "4.50")).toBe("26.98");
+  });
+
+  it("formats rope lengths with decimal comma and no unit spacing", () => {
+    expect(formatRopeLength("17.5")).toBe("17,50m");
+    expect(formatRopeLength("18")).toBe("18,00m");
   });
 
   it("creates the same cart configuration key for equivalent decimal input", () => {

@@ -133,9 +133,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         companyId:
           "Optional: gid://shopify/Company/<id>, nur <id>, oder Admin-URL mit /companies/<id>.",
         headerId:
-          "Alternativ: gid://shopify/Metaobject/<id> oder nur <id> fuer Price List Header.",
+          "Alternativ: gid://shopify/Metaobject/<id> oder nur <id> für Price List Header.",
         productId:
-          "Optional fuer Produkte ohne Variant-Line: gid://shopify/Product/<id> oder nur <id>.",
+          "Optional für Produkte ohne Variant-Line: gid://shopify/Product/<id> oder nur <id>.",
         variantId:
           "Optional wenn productId vorhanden: gid://shopify/ProductVariant/<id>, nur <id>, oder URL mit /variants/<id>.",
         quantity: "Muss groesser als 0 sein.",
@@ -287,7 +287,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         "Kein Price List Header gefunden. Entweder custom.price_list am Unternehmen setzen oder Header ID direkt eingeben.",
       hints: {
         scopes:
-          "Fuer company(...) brauchst du read_companies/read_customers und einen Store mit B2B-Zugriff.",
+          "Für company(...) brauchst du read_companies/read_customers und einen Store mit B2B-Zugriff.",
       },
       debug: {
         companyId,
@@ -414,7 +414,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return {
       ok: false,
       error:
-        "Kein Preis gefunden. Fuer Fallback ohne Variant bitte Variant ID angeben oder passende Product-Line sicherstellen.",
+        "Kein Preis gefunden. Für Fallback ohne Variant bitte Variant ID angeben oder passende Product-Line sicherstellen.",
       debug: {
         companyId,
         headerIdFromInput,

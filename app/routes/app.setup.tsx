@@ -70,7 +70,7 @@ async function loadProductTypes(admin: unknown) {
 function parseScaledDecimal(value: FormDataEntryValue | null, decimals: number, label: string) {
   const normalized = String(value || "").trim().replace(",", ".");
   const match = normalized.match(new RegExp(`^(\\d+)(?:\\.(\\d{1,${decimals}}))?$`));
-  if (!match) throw new Error(`${label} ist ungueltig.`);
+  if (!match) throw new Error(`${label} ist ungültig.`);
   return Number(match[1]) * 10 ** decimals + Number((match[2] || "").padEnd(decimals, "0"));
 }
 
@@ -179,19 +179,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    const minLengthHundredths = parseScaledDecimal(formData.get("minLengthMeters"), 2, "Minimale Laenge");
-    const maxLengthHundredths = parseScaledDecimal(formData.get("maxLengthMeters"), 2, "Maximale Laenge");
-    const defaultLengthHundredths = parseScaledDecimal(formData.get("defaultLengthMeters"), 2, "Vorgabelaenge");
+    const minLengthHundredths = parseScaledDecimal(formData.get("minLengthMeters"), 2, "Minimale Länge");
+    const maxLengthHundredths = parseScaledDecimal(formData.get("maxLengthMeters"), 2, "Maximale Länge");
+    const defaultLengthHundredths = parseScaledDecimal(formData.get("defaultLengthMeters"), 2, "Vorgabelänge");
     const minQuantity = Number(formData.get("minQuantity"));
     const maxQuantity = Number(formData.get("maxQuantity"));
     if (minLengthHundredths <= 0 || maxLengthHundredths < minLengthHundredths) {
-      throw new Error("Der Laengenbereich ist ungueltig.");
+      throw new Error("Der Längenbereich ist ungültig.");
     }
     if (
       defaultLengthHundredths < minLengthHundredths ||
       defaultLengthHundredths > maxLengthHundredths
     ) {
-      throw new Error("Die Vorgabelaenge muss innerhalb des Laengenbereichs liegen.");
+      throw new Error("Die Vorgabelänge muss innerhalb des Längenbereichs liegen.");
     }
     if (
       !Number.isSafeInteger(minQuantity) ||
@@ -199,7 +199,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       minQuantity < 1 ||
       maxQuantity < minQuantity
     ) {
-      throw new Error("Der Mengenbereich ist ungueltig.");
+      throw new Error("Der Mengenbereich ist ungültig.");
     }
 
     await saveRopeConfiguratorSetup(session.shop, {
@@ -304,9 +304,9 @@ export default function RopeConfiguratorSetupPage() {
 
         <s-section heading="Grenzwerte">
           <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="base">
-            <s-number-field label="Minimale Laenge (m)" name="minLengthMeters" min={0.01} step={0.01} value={formatScaledDecimal(config.minLengthHundredths, 2)} required></s-number-field>
-            <s-number-field label="Maximale Laenge (m)" name="maxLengthMeters" min={0.01} step={0.01} value={formatScaledDecimal(config.maxLengthHundredths, 2)} required></s-number-field>
-            <s-number-field label="Vorgabelaenge (m)" name="defaultLengthMeters" min={0.01} step={0.01} value={formatScaledDecimal(config.defaultLengthHundredths, 2)} required></s-number-field>
+            <s-number-field label="Minimale Länge (m)" name="minLengthMeters" min={0.01} step={0.01} value={formatScaledDecimal(config.minLengthHundredths, 2)} required></s-number-field>
+            <s-number-field label="Maximale Länge (m)" name="maxLengthMeters" min={0.01} step={0.01} value={formatScaledDecimal(config.maxLengthHundredths, 2)} required></s-number-field>
+            <s-number-field label="Vorgabelänge (m)" name="defaultLengthMeters" min={0.01} step={0.01} value={formatScaledDecimal(config.defaultLengthHundredths, 2)} required></s-number-field>
             <s-number-field label="Minimale Menge" name="minQuantity" min={1} step={1} value={String(config.minQuantity)} required></s-number-field>
             <s-number-field label="Maximale Menge" name="maxQuantity" min={1} step={1} value={String(config.maxQuantity)} required></s-number-field>
           </s-grid>

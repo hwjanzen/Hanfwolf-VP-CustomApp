@@ -10,6 +10,7 @@ import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   createRopeCartConfigurationKey,
+  formatRopeLength,
   isRopeProduct,
   normalizeRopeProductCut,
   selectRopeMasterVariant,
@@ -359,7 +360,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       cut = normalizeRopeProductCut(body?.item, config);
     } catch (error) {
       return Response.json(
-        { ok: false, error: error instanceof Error ? error.message : "Ungueltige Anfrage." },
+        { ok: false, error: error instanceof Error ? error.message : "Ungültige Anfrage." },
         { status: 400 },
       );
     }
@@ -452,7 +453,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return Response.json(
             {
               ok: false,
-              error: `Fuer ${sourceProduct.title} sind mehrere Varianten als is_default_configuration markiert. Es darf genau eine Stammdaten-Variante geben.`,
+              error: `Für ${sourceProduct.title} sind mehrere Varianten als is_default_configuration markiert. Es darf genau eine Stammdaten-Variante geben.`,
             },
             { status: 400 },
           );
@@ -461,7 +462,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return Response.json(
             {
               ok: false,
-              error: `Fuer ${sourceProduct.title} fehlt eine Stammdaten-Variante oder es gibt mehrere unmarkierte Kandidaten. Markiere genau eine Variante mit is_default_configuration.`,
+              error: `Für ${sourceProduct.title} fehlt eine Stammdaten-Variante oder es gibt mehrere unmarkierte Kandidaten. Markiere genau eine Variante mit is_default_configuration.`,
             },
             { status: 400 },
           );
@@ -511,14 +512,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
         if (source.selectedOptions.length === 0 || source.selectedOptions.length !== sourceProduct.options.length) {
           return Response.json(
-            { ok: false, error: "Das Hauptprodukt hat kein vollstaendiges Optionsmodell fuer Zuschnitt-Varianten." },
+            { ok: false, error: "Das Hauptprodukt hat kein vollstaendiges Optionsmodell für Zuschnitt-Varianten." },
             { status: 400 },
           );
         }
 
         if (cut.presentation === "Haspel" && !config.haspelSurchargeMetafield) {
           return Response.json(
-            { ok: false, error: "Im RopeConfigurator Setup fehlt die Zuordnung fuer den Haspel-Aufpreis." },
+            { ok: false, error: "Im RopeConfigurator Setup fehlt die Zuordnung für den Haspel-Aufpreis." },
             { status: 400 },
           );
         }
@@ -527,7 +528,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return Response.json(
             {
               ok: false,
-              error: `Fuer ${sourceProduct.title} fehlt ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
+              error: `Für ${sourceProduct.title} fehlt ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
             },
             { status: 400 },
           );
@@ -541,7 +542,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return Response.json(
             {
               ok: false,
-              error: `Fuer ${sourceProduct.title} muss ein positives Gewicht pro Meter gepflegt sein. Shopify liefert aktuell: ${measuredWeight}.`,
+              error: `Für ${sourceProduct.title} muss ein positives Gewicht pro Meter gepflegt sein. Shopify liefert aktuell: ${measuredWeight}.`,
             },
             { status: 400 },
           );
@@ -561,7 +562,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let cartVariant = await findRopeCartVariant(admin, sku, configurationKey);
 
         if (!cartVariant) {
-          const configurationLabel = `Zuschnitt ${cut.lengthMeters} m ${sku.slice(-8)}`;
+          const configurationLabel = `Zuschnitt ${formatRopeLength(cut.lengthMeters)} ${sku.slice(-8)}`;
           const optionValues = source.selectedOptions.map((option, index) => ({
             optionName: option.name,
             name: index === source.selectedOptions.length - 1 ? configurationLabel : option.value,
@@ -699,8 +700,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             quantity: cut.quantity,
             unitPrice,
             properties: {
-              OriginalProductId: sourceProduct.id,
-              Laenge: `${cut.lengthMeters} m`,
+              Länge: formatRopeLength(cut.lengthMeters),
               Aufmachung: cut.presentation,
               _hanfwolf_rope_configuration: configurationKey,
             },

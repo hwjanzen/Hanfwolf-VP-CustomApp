@@ -6,6 +6,7 @@ import {
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
+  formatRopeLength,
   isRopeProduct,
   normalizeRopeCuts,
 } from "../services/rope-draft-order.server";
@@ -44,7 +45,7 @@ async function createRopeDraftOrder(request: Request) {
     cuts = normalizeRopeCuts(body?.items, config);
   } catch (error) {
     return Response.json(
-      { ok: false, error: error instanceof Error ? error.message : "Ungueltige Anfrage." },
+      { ok: false, error: error instanceof Error ? error.message : "Ungültige Anfrage." },
       { status: 400 },
     );
   }
@@ -126,20 +127,20 @@ async function createRopeDraftOrder(request: Request) {
       }
 
       if (cut.presentation === "Haspel" && !config.haspelSurchargeMetafield) {
-        throw new Error("Im RopeConfigurator Setup fehlt die Zuordnung fuer den Haspel-Aufpreis.");
+        throw new Error("Im RopeConfigurator Setup fehlt die Zuordnung für den Haspel-Aufpreis.");
       }
       const surcharge =
         cut.presentation === "Haspel" ? variant.product.haspelSurcharge?.value : "0";
       if (cut.presentation === "Haspel" && !surcharge) {
         throw new Error(
-          `Fuer ${variant.product.title} fehlt das Produkt-Metafeld ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
+          `Für ${variant.product.title} fehlt das Produkt-Metafeld ${config.haspelSurchargeMetafield!.namespace}.${config.haspelSurchargeMetafield!.key}.`,
         );
       }
 
       const weightPerMeter = variant.inventoryItem.measurement.weight;
       if (!weightPerMeter) {
         throw new Error(
-          `Fuer ${variant.product.title} fehlt das Varianten-Gewicht pro Meter.`,
+          `Für ${variant.product.title} fehlt das Varianten-Gewicht pro Meter.`,
         );
       }
       const unitWeight = calculateRopeUnitWeight(
@@ -169,7 +170,7 @@ async function createRopeDraftOrder(request: Request) {
         taxable: variant.taxable,
         ...(variant.sku ? { sku: variant.sku } : {}),
         customAttributes: [
-          { key: "Laenge", value: `${cut.lengthMeters} m` },
+          { key: "Länge", value: formatRopeLength(cut.lengthMeters) },
           { key: "Aufmachung", value: cut.presentation },
           { key: "Meterpreis", value: `${variant.price} ${currencyCode}/m` },
           {
