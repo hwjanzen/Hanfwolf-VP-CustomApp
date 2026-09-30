@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  calculateRopeShippingPrice,
   createRopeCartConfigurationKey,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
@@ -176,25 +175,6 @@ describe("rope draft order pricing", () => {
     );
   });
 
-  it("selects shipping by total order weight", () => {
-    expect(calculateRopeShippingPrice(10)).toBe("15.00");
-    expect(calculateRopeShippingPrice(10.0001)).toBe("30.00");
-    expect(calculateRopeShippingPrice(50)).toBe("30.00");
-    expect(calculateRopeShippingPrice(50.0001)).toBe("50.00");
-    expect(calculateRopeShippingPrice(200)).toBe("50.00");
-    expect(calculateRopeShippingPrice(200.0001)).toBe("150.00");
-  });
-
-  it("uses configured shipping tiers", () => {
-    const tiers = [
-      { maxWeightGrams: 5_000, priceCents: 990 },
-      { maxWeightGrams: null, priceCents: 2_490 },
-    ];
-
-    expect(calculateRopeShippingPrice(5, tiers)).toBe("9.90");
-    expect(calculateRopeShippingPrice(5.001, tiers)).toBe("24.90");
-  });
-
   it("normalizes Shopify weight units to kilograms", () => {
     expect(convertWeightToKilograms(350, "GRAMS")).toBe(0.35);
     expect(convertWeightToKilograms(0.35, "KILOGRAMS")).toBe(0.35);
@@ -255,9 +235,9 @@ describe("rope draft order pricing", () => {
     ).toBe("750");
   });
 
-  it("uses the eligibility metafield when it is mapped", () => {
-    expect(isRopeProduct("Other", { value: "true" }, true)).toBe(true);
-    expect(isRopeProduct("Spezialseil", { value: "false" }, true)).toBe(false);
-    expect(isRopeProduct("Spezialseil", null, false)).toBe(true);
+  it("uses the configured Shopify product type", () => {
+    expect(isRopeProduct("Spezialseile", "Spezialseile")).toBe(true);
+    expect(isRopeProduct("Andere Seile", "Spezialseile")).toBe(false);
+    expect(isRopeProduct("Spezialseil", null)).toBe(true);
   });
 });

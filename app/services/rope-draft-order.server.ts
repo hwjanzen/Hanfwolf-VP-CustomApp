@@ -1,7 +1,6 @@
 import {
   DEFAULT_ROPE_CONFIG,
   type RopeConfiguratorConfig,
-  type RopeShippingTier,
 } from "./rope-configurator-config";
 
 export type RopeCut = {
@@ -54,11 +53,10 @@ export function isRopeProductType(productType: string) {
 
 export function isRopeProduct(
   productType: string,
-  eligibilityMetafield: { value: string } | null | undefined,
-  hasEligibilityMapping: boolean,
+  configuredProductType: string | null,
 ) {
-  return hasEligibilityMapping
-    ? eligibilityMetafield?.value === "true"
+  return configuredProductType
+    ? productType.trim().toLocaleLowerCase() === configuredProductType.trim().toLocaleLowerCase()
     : isRopeProductType(productType);
 }
 
@@ -337,25 +335,6 @@ export function calculateRopeUnitWeight(
 
   const lengthHundredths = parseScaledDecimal(lengthMeters, 2, "Laenge");
   return Number((weightPerMeter * (lengthHundredths / 100)).toFixed(6));
-}
-
-export function calculateRopeShippingPrice(
-  totalWeightKilograms: number,
-  tiers: RopeShippingTier[] = DEFAULT_ROPE_CONFIG.shippingTiers,
-) {
-  if (!Number.isFinite(totalWeightKilograms) || totalWeightKilograms <= 0) {
-    throw new Error("Das Gesamtgewicht muss groesser als 0 kg sein.");
-  }
-
-  const totalWeightGrams = totalWeightKilograms * 1000;
-  const tier = tiers.find(
-    (candidate) =>
-      candidate.maxWeightGrams === null || totalWeightGrams <= candidate.maxWeightGrams,
-  );
-  if (!tier) {
-    throw new Error("Fuer das Gesamtgewicht ist keine Versandstaffel konfiguriert.");
-  }
-  return (tier.priceCents / 100).toFixed(2);
 }
 
 export function convertWeightToKilograms(value: number, unit: string) {

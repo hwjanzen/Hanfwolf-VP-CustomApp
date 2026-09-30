@@ -6,7 +6,6 @@ import {
   type RopeConfiguratorConfig,
 } from "../services/rope-configurator-setup.server";
 import {
-  calculateRopeShippingPrice,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
@@ -38,7 +37,6 @@ type VariantNode = {
     id: string;
     title: string;
     productType: string;
-    ropeEligibility: { value: string } | null;
   };
 };
 
@@ -47,7 +45,6 @@ type RopeProductNode = {
   title: string;
   productType: string;
   haspelSurcharge: { value: string } | null;
-  ropeEligibility: { value: string } | null;
   variants: {
     nodes: Array<{
       id: string;
@@ -96,18 +93,13 @@ function normalizeCartItems(value: unknown): CartItem[] {
 async function loadVariants(
   admin: unknown,
   ids: string[],
-  config: RopeConfiguratorConfig,
 ) {
   const result = await adminGraphql<{
     nodes: Array<VariantNode | null>;
   }>(
     admin,
     `#graphql
-    query RopeCartDraftOrderVariants(
-      $ids: [ID!]!
-      $eligibilityNamespace: String!
-      $eligibilityKey: String!
-    ) {
+    query RopeCartDraftOrderVariants($ids: [ID!]!) {
       nodes(ids: $ids) {
         ... on ProductVariant {
           id
@@ -130,18 +122,11 @@ async function loadVariants(
             id
             title
             productType
-            ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
-              value
-            }
           }
         }
       }
     }`,
-    {
-      ids,
-      eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
-      eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
-    },
+    { ids },
   );
 
   if (!result.ok) {
@@ -171,8 +156,6 @@ async function loadRopeProducts(
       $ids: [ID!]!
       $haspelNamespace: String!
       $haspelKey: String!
-      $eligibilityNamespace: String!
-      $eligibilityKey: String!
     ) {
       nodes(ids: $ids) {
         ... on Product {
@@ -180,9 +163,6 @@ async function loadRopeProducts(
           title
           productType
           haspelSurcharge: metafield(namespace: $haspelNamespace, key: $haspelKey) {
-            value
-          }
-          ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
             value
           }
           variants(first: 250) {
@@ -205,8 +185,6 @@ async function loadRopeProducts(
       ids,
       haspelNamespace: config.haspelSurchargeMetafield?.namespace ?? "$app",
       haspelKey: config.haspelSurchargeMetafield?.key ?? "unconfigured_haspel_surcharge",
-      eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
-      eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
     },
   );
 
@@ -252,7 +230,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cartVariants = await loadVariants(
       admin,
       [...new Set(cartItems.map((item) => item.variantId))],
-      config,
     );
     const ropeConfigurations = new Map<string, ReturnType<typeof parseRopeCartConfigurationKey>>();
 
@@ -287,7 +264,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .filter((configuration): configuration is Extract<RopeCartConfiguration, { version: "v2" }> => configuration.version === "v2")
       .map((configuration) => configuration.productId);
     const [originalVariants, ropeProducts] = await Promise.all([
-      loadVariants(admin, [...new Set(legacyVariantIds)], config),
+      loadVariants(admin, [...new Set(legacyVariantIds)]),
       loadRopeProducts(admin, [...new Set(ropeProductIds)], config),
     ]);
     const shopResult = await adminGraphql<{ shop: { currencyCode: string } }>(
@@ -316,8 +293,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!configuration) {
         if (isRopeProduct(
           cartVariant.product.productType,
-          cartVariant.product.ropeEligibility,
-          Boolean(config.ropeEligibilityMetafield),
+          config.ropeProductType,
         )) {
           return Response.json(
             { ok: false, error: "Spezialseile muessen ueber den Zuschnitt-Konfigurator in den Warenkorb gelegt werden." },
@@ -352,8 +328,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           !product ||
           !isRopeProduct(
             product.productType,
-            product.ropeEligibility,
-            Boolean(config.ropeEligibilityMetafield),
+            config.ropeProductType,
           )
         ) {
           return Response.json(
@@ -455,8 +430,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       if (!isRopeProduct(
         originalVariant.product.productType,
-        originalVariant.product.ropeEligibility,
-        Boolean(config.ropeEligibilityMetafield),
+        config.ropeProductType,
       )) {
         return Response.json(
           { ok: false, error: "Die Originalvariante des Zuschnitts ist kein Spezialseil." },
@@ -505,10 +479,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
     }
 
-    const shippingPrice = calculateRopeShippingPrice(
-      totalWeightKilograms,
-      config.shippingTiers,
-    );
     const url = new URL(request.url);
     const customerId = normalizeCustomerId(url.searchParams.get("logged_in_customer_id") || "");
     const draftResult = await adminGraphql<{
@@ -546,13 +516,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         input: {
           ...(customerId ? { customerId } : {}),
           lineItems,
-          shippingLine: {
-            title: "Standard",
-            price: shippingPrice,
-          },
           customAttributes: [
             { key: "Gesamtgewicht", value: `${totalWeightKilograms.toFixed(6)} kg` },
-            { key: "Versandstaffel", value: `${shippingPrice} ${currencyCode}` },
           ],
           note: "Warenkorb aus dem Onlineshop",
           tags: ["Warenkorb", "Konfektionierte Seile"],

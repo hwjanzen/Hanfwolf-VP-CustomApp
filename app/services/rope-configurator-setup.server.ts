@@ -2,7 +2,6 @@ import prisma from "../db.server";
 import { adminGraphql } from "./shopify-graphql.server";
 import {
   DEFAULT_ROPE_CONFIG,
-  parseShippingTiers,
   type MetafieldMapping,
   type RopeConfiguratorConfig,
 } from "./rope-configurator-config";
@@ -10,7 +9,6 @@ import {
 export type {
   MetafieldMapping,
   RopeConfiguratorConfig,
-  RopeShippingTier,
 } from "./rope-configurator-config";
 
 export type VariantMetafieldDefinition = {
@@ -43,7 +41,6 @@ export async function getRopeConfiguratorConfig(shop: string): Promise<RopeConfi
     defaultLengthHundredths: setup.defaultLengthHundredths,
     minQuantity: setup.minQuantity,
     maxQuantity: setup.maxQuantity,
-    shippingTiers: parseShippingTiers(setup.shippingTiersJson),
     packageQuantityMetafield: createMapping(
       setup.packageQuantityMetafieldDefinitionId,
       setup.packageQuantityMetafieldNamespace,
@@ -54,11 +51,7 @@ export async function getRopeConfiguratorConfig(shop: string): Promise<RopeConfi
       setup.haspelSurchargeMetafieldNamespace,
       setup.haspelSurchargeMetafieldKey,
     ),
-    ropeEligibilityMetafield: createMapping(
-      setup.ropeEligibilityMetafieldDefinitionId,
-      setup.ropeEligibilityMetafieldNamespace,
-      setup.ropeEligibilityMetafieldKey,
-    ),
+    ropeProductType: setup.ropeProductType,
   };
 }
 
@@ -73,15 +66,12 @@ export async function saveRopeConfiguratorSetup(
     haspelSurchargeMetafieldDefinitionId: config.haspelSurchargeMetafield?.definitionId ?? null,
     haspelSurchargeMetafieldNamespace: config.haspelSurchargeMetafield?.namespace ?? null,
     haspelSurchargeMetafieldKey: config.haspelSurchargeMetafield?.key ?? null,
-    ropeEligibilityMetafieldDefinitionId: config.ropeEligibilityMetafield?.definitionId ?? null,
-    ropeEligibilityMetafieldNamespace: config.ropeEligibilityMetafield?.namespace ?? null,
-    ropeEligibilityMetafieldKey: config.ropeEligibilityMetafield?.key ?? null,
+    ropeProductType: config.ropeProductType,
     minLengthHundredths: config.minLengthHundredths,
     maxLengthHundredths: config.maxLengthHundredths,
     defaultLengthHundredths: config.defaultLengthHundredths,
     minQuantity: config.minQuantity,
     maxQuantity: config.maxQuantity,
-    shippingTiersJson: JSON.stringify(config.shippingTiers),
   };
 
   return prisma.ropeConfiguratorSetup.upsert({

@@ -3,7 +3,6 @@ import { authenticate } from "../shopify.server";
 import { normalizeCustomerId } from "../services/price-resolver.server";
 import { getRopeConfiguratorConfig } from "../services/rope-configurator-setup.server";
 import {
-  calculateRopeShippingPrice,
   calculateRopeUnitPrice,
   calculateRopeUnitWeight,
   convertWeightToKilograms,
@@ -28,7 +27,6 @@ type VariantNode = {
     title: string;
     productType: string;
     haspelSurcharge: { value: string } | null;
-    ropeEligibility: { value: string } | null;
   };
 };
 
@@ -62,8 +60,6 @@ async function createRopeDraftOrder(request: Request) {
       $ids: [ID!]!
       $haspelNamespace: String!
       $haspelKey: String!
-      $eligibilityNamespace: String!
-      $eligibilityKey: String!
     ) {
       shop {
         currencyCode
@@ -90,9 +86,6 @@ async function createRopeDraftOrder(request: Request) {
             haspelSurcharge: metafield(namespace: $haspelNamespace, key: $haspelKey) {
               value
             }
-            ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
-              value
-            }
           }
         }
       }
@@ -101,8 +94,6 @@ async function createRopeDraftOrder(request: Request) {
       ids: variantIds,
       haspelNamespace: config.haspelSurchargeMetafield?.namespace ?? "$app",
       haspelKey: config.haspelSurchargeMetafield?.key ?? "unconfigured_haspel_surcharge",
-      eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
-      eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
     },
   );
 
@@ -129,8 +120,7 @@ async function createRopeDraftOrder(request: Request) {
       }
       if (!isRopeProduct(
         variant.product.productType,
-        variant.product.ropeEligibility,
-        Boolean(config.ropeEligibilityMetafield),
+        config.ropeProductType,
       )) {
         throw new Error(`${variant.product.title} ist kein Produkt vom Typ Spezialseile.`);
       }
@@ -215,8 +205,6 @@ async function createRopeDraftOrder(request: Request) {
       )
       .toFixed(6),
   );
-  const shippingPrice = calculateRopeShippingPrice(totalWeight, config.shippingTiers);
-
   const url = new URL(request.url);
   const customerId = normalizeCustomerId(url.searchParams.get("logged_in_customer_id") || "");
   const draftResult = await adminGraphql<{
@@ -253,13 +241,8 @@ async function createRopeDraftOrder(request: Request) {
       input: {
         ...(customerId ? { customerId } : {}),
         lineItems,
-        shippingLine: {
-          title: "Standard",
-          price: shippingPrice,
-        },
         customAttributes: [
           { key: "Gesamtgewicht", value: `${totalWeight} kg` },
-          { key: "Versandstaffel", value: `${shippingPrice} ${currencyCode}` },
         ],
         note: "Konfektionierte Seile aus dem Onlineshop",
         tags: ["Konfektionierte Seile"],

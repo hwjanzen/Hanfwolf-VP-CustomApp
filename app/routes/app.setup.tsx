@@ -8,8 +8,10 @@ import {
   saveRopeConfiguratorSetup,
   type VariantMetafieldDefinition,
 } from "../services/rope-configurator-setup.server";
-import type { MetafieldMapping, RopeShippingTier } from "../services/rope-configurator-config";
+import type { MetafieldMapping } from "../services/rope-configurator-config";
 import { adminGraphql } from "../services/shopify-graphql.server";
+
+const NO_METAFIELD_MAPPING = "__none__";
 
 async function loadMetafieldDefinitions(admin: unknown, ownerType: "PRODUCT" | "PRODUCTVARIANT") {
   const result = await adminGraphql<{
@@ -42,6 +44,29 @@ async function loadMetafieldDefinitions(admin: unknown, ownerType: "PRODUCT" | "
   );
 }
 
+async function loadProductTypes(admin: unknown) {
+  const result = await adminGraphql<{
+    productTypes: { nodes: string[] };
+  }>(
+    admin,
+    `#graphql
+    query RopeConfiguratorProductTypes {
+      productTypes(first: 250) {
+        nodes
+      }
+    }`,
+  );
+
+  if (!result.ok) {
+    throw new Error(result.errors.join(" | "));
+  }
+
+  return result.data.productTypes.nodes
+    .map((productType) => productType.trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, "de"));
+}
+
 function parseScaledDecimal(value: FormDataEntryValue | null, decimals: number, label: string) {
   const normalized = String(value || "").trim().replace(",", ".");
   const match = normalized.match(new RegExp(`^(\\d+)(?:\\.(\\d{1,${decimals}}))?$`));
@@ -59,7 +84,7 @@ function resolveMapping(
   label: string,
 ): MetafieldMapping | null {
   const rawValue = typeof submittedValue === "string" ? submittedValue.trim() : "";
-  if (!rawValue) return null;
+  if (!rawValue || rawValue === NO_METAFIELD_MAPPING) return null;
 
   let value = rawValue;
   try {
@@ -94,20 +119,21 @@ function selectedMappingValue(
   mapping: MetafieldMapping | null,
   definitions: VariantMetafieldDefinition[],
 ) {
-  if (!mapping) return "";
+  if (!mapping) return NO_METAFIELD_MAPPING;
   const definition = definitions.find(
     (definition) =>
       definition.id === mapping.definitionId ||
       (definition.namespace === mapping.namespace && definition.key === mapping.key),
   );
-  return definition ? mappingOptionValue(definition) : "";
+  return definition ? mappingOptionValue(definition) : NO_METAFIELD_MAPPING;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
-  const [allVariantDefinitions, allProductDefinitions, config] = await Promise.all([
+  const [allVariantDefinitions, allProductDefinitions, productTypes, config] = await Promise.all([
     loadMetafieldDefinitions(admin, "PRODUCTVARIANT"),
     loadMetafieldDefinitions(admin, "PRODUCT"),
+    loadProductTypes(admin),
     getRopeConfiguratorConfig(session.shop),
   ]);
 
@@ -118,9 +144,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     surchargeDefinitions: allProductDefinitions.filter((definition) =>
       ["number_decimal", "single_line_text_field"].includes(definition.type.name),
     ),
-    eligibilityDefinitions: allProductDefinitions.filter(
-      (definition) => definition.type.name === "boolean",
-    ),
+    productTypes,
     config,
   };
 };
@@ -129,9 +153,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   try {
-    const [allVariantDefinitions, allProductDefinitions] = await Promise.all([
+    const [allVariantDefinitions, allProductDefinitions, productTypes] = await Promise.all([
       loadMetafieldDefinitions(admin, "PRODUCTVARIANT"),
       loadMetafieldDefinitions(admin, "PRODUCT"),
+      loadProductTypes(admin),
     ]);
     const variantDefinitions = allVariantDefinitions.filter(
       (definition) => definition.type.name === "single_line_text_field",
@@ -139,9 +164,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const surchargeDefinitions = allProductDefinitions.filter((definition) =>
       ["number_decimal", "single_line_text_field"].includes(definition.type.name),
     );
-    const eligibilityDefinitions = allProductDefinitions.filter(
-      (definition) => definition.type.name === "boolean",
-    );
+    const submittedProductType = String(formData.get("ropeProductType") || "").trim();
+    const ropeProductType =
+      !submittedProductType || submittedProductType === NO_METAFIELD_MAPPING
+        ? null
+        : productTypes.find((productType) => productType === submittedProductType) ?? null;
+    if (
+      submittedProductType &&
+      submittedProductType !== NO_METAFIELD_MAPPING &&
+      !ropeProductType
+    ) {
+      throw new Error(
+        "Seil-Produkttyp: Der ausgewaehlte Produkttyp ist nicht mehr verfuegbar. Bitte die Seite neu laden.",
+      );
+    }
 
     const minLengthHundredths = parseScaledDecimal(formData.get("minLengthMeters"), 2, "Minimale Laenge");
     const maxLengthHundredths = parseScaledDecimal(formData.get("maxLengthMeters"), 2, "Maximale Laenge");
@@ -166,30 +202,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       throw new Error("Der Mengenbereich ist ungueltig.");
     }
 
-    const tierCount = Number(formData.get("shippingTierCount"));
-    if (!Number.isSafeInteger(tierCount) || tierCount < 1 || tierCount > 10) {
-      throw new Error("Die Anzahl der Versandstaffeln ist ungueltig.");
-    }
-    const shippingTiers: RopeShippingTier[] = Array.from({ length: tierCount }, (_, index) => ({
-      maxWeightGrams:
-        index === tierCount - 1
-          ? null
-          : parseScaledDecimal(formData.get(`shippingMaxKg${index}`), 3, `Gewichtsgrenze ${index + 1}`),
-      priceCents: parseScaledDecimal(formData.get(`shippingPrice${index}`), 2, `Versandpreis ${index + 1}`),
-    }));
-    for (let index = 1; index < shippingTiers.length - 1; index += 1) {
-      if (shippingTiers[index - 1].maxWeightGrams! >= shippingTiers[index].maxWeightGrams!) {
-        throw new Error("Die Gewichtsgrenzen muessen aufsteigend sein.");
-      }
-    }
-
     await saveRopeConfiguratorSetup(session.shop, {
       minLengthHundredths,
       maxLengthHundredths,
       defaultLengthHundredths,
       minQuantity,
       maxQuantity,
-      shippingTiers,
       packageQuantityMetafield: resolveMapping(
         formData.get("packageQuantityMetafieldDefinitionId"),
         variantDefinitions,
@@ -200,11 +218,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         surchargeDefinitions,
         "Haspel-Aufpreis",
       ),
-      ropeEligibilityMetafield: resolveMapping(
-        formData.get("ropeEligibilityMetafieldDefinitionId"),
-        eligibilityDefinitions,
-        "Seilprodukt-Kennzeichnung",
-      ),
+      ropeProductType,
     });
 
     return { ok: true, message: "Setup wurde gespeichert." };
@@ -217,7 +231,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function RopeConfiguratorSetupPage() {
-  const { variantDefinitions, surchargeDefinitions, eligibilityDefinitions, config } =
+  const { variantDefinitions, surchargeDefinitions, productTypes, config } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
@@ -247,7 +261,7 @@ export default function RopeConfiguratorSetupPage() {
               value={selectedMappingValue(config.packageQuantityMetafield, variantDefinitions)}
               disabled={variantDefinitions.length === 0}
             >
-              <s-option value="">Nicht zugeordnet</s-option>
+              <s-option value={NO_METAFIELD_MAPPING}>Nicht zugeordnet</s-option>
               {variantDefinitions.map((definition) => (
                 <s-option key={definition.id} value={mappingOptionValue(definition)}>
                   {definition.name} ({definition.namespace}.{definition.key})
@@ -260,7 +274,7 @@ export default function RopeConfiguratorSetupPage() {
               name="haspelSurchargeMetafieldDefinitionId"
               value={selectedMappingValue(config.haspelSurchargeMetafield, surchargeDefinitions)}
             >
-              <s-option value="">Nicht zugeordnet</s-option>
+              <s-option value={NO_METAFIELD_MAPPING}>Nicht zugeordnet</s-option>
               {surchargeDefinitions.map((definition) => (
                 <s-option key={definition.id} value={mappingOptionValue(definition)}>
                   {definition.name} ({definition.namespace}.{definition.key})
@@ -269,14 +283,14 @@ export default function RopeConfiguratorSetupPage() {
             </s-select>
 
             <s-select
-              label="Seilprodukt-Kennzeichnung"
-              name="ropeEligibilityMetafieldDefinitionId"
-              value={selectedMappingValue(config.ropeEligibilityMetafield, eligibilityDefinitions)}
+              label="Seil-Produkttyp"
+              name="ropeProductType"
+              value={config.ropeProductType ?? NO_METAFIELD_MAPPING}
             >
-              <s-option value="">Produkttyp Spezialseil verwenden</s-option>
-              {eligibilityDefinitions.map((definition) => (
-                <s-option key={definition.id} value={mappingOptionValue(definition)}>
-                  {definition.name} ({definition.namespace}.{definition.key})
+              <s-option value={NO_METAFIELD_MAPPING}>Automatisch: Produkttyp beginnt mit Spezialseil</s-option>
+              {productTypes.map((productType) => (
+                <s-option key={productType} value={productType}>
+                  {productType}
                 </s-option>
               ))}
             </s-select>
@@ -298,47 +312,17 @@ export default function RopeConfiguratorSetupPage() {
           </s-grid>
         </s-section>
 
-        <s-section heading="Versandstaffeln">
-          <input type="hidden" name="shippingTierCount" value={config.shippingTiers.length} />
-          <s-stack direction="block" gap="base">
-            {config.shippingTiers.map((tier, index) => (
-              <s-grid key={index} gridTemplateColumns="1fr 1fr" gap="base">
-                {tier.maxWeightGrams === null ? (
-                  <s-text-field label="Bis Gewicht (kg)" value="Unbegrenzt" disabled></s-text-field>
-                ) : (
-                  <s-number-field
-                    label="Bis Gewicht (kg)"
-                    name={`shippingMaxKg${index}`}
-                    min={0.001}
-                    step={0.001}
-                    value={formatScaledDecimal(tier.maxWeightGrams, 3)}
-                    required
-                  ></s-number-field>
-                )}
-                <s-number-field
-                  label="Versandpreis"
-                  name={`shippingPrice${index}`}
-                  min={0}
-                  step={0.01}
-                  value={formatScaledDecimal(tier.priceCents, 2)}
-                  required
-                ></s-number-field>
-              </s-grid>
-            ))}
-
-            <s-stack direction="inline" gap="base">
-              <s-button
-                type="submit"
-                variant="primary"
-                icon="save"
-                loading={isSubmitting}
-                disabled={isSubmitting}
-              >
-                Speichern
-              </s-button>
-            </s-stack>
-          </s-stack>
-        </s-section>
+        <s-stack direction="inline" gap="base">
+          <s-button
+            type="submit"
+            variant="primary"
+            icon="save"
+            loading={isSubmitting}
+            disabled={isSubmitting}
+          >
+            Speichern
+          </s-button>
+        </s-stack>
       </fetcher.Form>
     </s-page>
   );

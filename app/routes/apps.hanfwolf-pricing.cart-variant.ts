@@ -38,7 +38,6 @@ type SourceProduct = {
   productType: string;
   options: Array<{ id: string; name: string }>;
   haspelSurcharge: { value: string } | null;
-  ropeEligibility: { value: string } | null;
   variants: { nodes: SourceVariant[] };
 };
 
@@ -374,8 +373,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         $productId: ID!
         $haspelNamespace: String!
         $haspelKey: String!
-        $eligibilityNamespace: String!
-        $eligibilityKey: String!
       ) {
             product(id: $productId) {
               id
@@ -387,9 +384,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 name
               }
               haspelSurcharge: metafield(namespace: $haspelNamespace, key: $haspelKey) {
-                value
-              }
-              ropeEligibility: metafield(namespace: $eligibilityNamespace, key: $eligibilityKey) {
                 value
               }
               variants(first: 250) {
@@ -424,8 +418,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             productId: cut.productId,
             haspelNamespace: config.haspelSurchargeMetafield?.namespace ?? "$app",
             haspelKey: config.haspelSurchargeMetafield?.key ?? "unconfigured_haspel_surcharge",
-            eligibilityNamespace: config.ropeEligibilityMetafield?.namespace ?? "$app",
-            eligibilityKey: config.ropeEligibilityMetafield?.key ?? "unconfigured_rope_eligibility",
           },
         );
 
@@ -446,8 +438,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           !sourceProduct ||
           !isRopeProduct(
             sourceProduct.productType,
-            sourceProduct.ropeEligibility,
-            Boolean(config.ropeEligibilityMetafield),
+            config.ropeProductType,
           )
         ) {
           return Response.json(
